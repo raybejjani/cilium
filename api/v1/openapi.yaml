@@ -974,8 +974,18 @@ definitions:
         type: array
         items:
           type: string
+      ingress-source-user-policy:
+        description: Names of L3 policies in effect on this endpoint
+        type: array
+        items:
+          type: string
       egress:
         description: List of CIDR egress rules
+        type: array
+        items:
+          type: string
+      egress-source-user-policy:
+        description: Names of L3 policies in effect on this endpoint
         type: array
         items:
           type: string

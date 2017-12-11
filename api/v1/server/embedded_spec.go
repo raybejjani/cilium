@@ -1037,8 +1037,22 @@ func init() {
             "type": "string"
           }
         },
+        "egress-source-user-policy": {
+          "description": "Names of L3 policies in effect on this endpoint",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
         "ingress": {
           "description": "List of CIDR ingress rules",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "ingress-source-user-policy": {
+          "description": "Names of L3 policies in effect on this endpoint",
           "type": "array",
           "items": {
             "type": "string"

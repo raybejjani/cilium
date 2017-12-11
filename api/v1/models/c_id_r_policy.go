@@ -20,13 +20,23 @@ type CIDRPolicy struct {
 	// List of CIDR egress rules
 	Egress []string `json:"egress"`
 
+	// Names of L3 policies in effect on this endpoint
+	EgressSourceUserPolicy []string `json:"egress-source-user-policy"`
+
 	// List of CIDR ingress rules
 	Ingress []string `json:"ingress"`
+
+	// Names of L3 policies in effect on this endpoint
+	IngressSourceUserPolicy []string `json:"ingress-source-user-policy"`
 }
 
 /* polymorph CIDRPolicy egress false */
 
+/* polymorph CIDRPolicy egress-source-user-policy false */
+
 /* polymorph CIDRPolicy ingress false */
+
+/* polymorph CIDRPolicy ingress-source-user-policy false */
 
 // Validate validates this c ID r policy
 func (m *CIDRPolicy) Validate(formats strfmt.Registry) error {
@@ -37,7 +47,17 @@ func (m *CIDRPolicy) Validate(formats strfmt.Registry) error {
 		res = append(res, err)
 	}
 
+	if err := m.validateEgressSourceUserPolicy(formats); err != nil {
+		// prop
+		res = append(res, err)
+	}
+
 	if err := m.validateIngress(formats); err != nil {
+		// prop
+		res = append(res, err)
+	}
+
+	if err := m.validateIngressSourceUserPolicy(formats); err != nil {
 		// prop
 		res = append(res, err)
 	}
@@ -57,9 +77,27 @@ func (m *CIDRPolicy) validateEgress(formats strfmt.Registry) error {
 	return nil
 }
 
+func (m *CIDRPolicy) validateEgressSourceUserPolicy(formats strfmt.Registry) error {
+
+	if swag.IsZero(m.EgressSourceUserPolicy) { // not required
+		return nil
+	}
+
+	return nil
+}
+
 func (m *CIDRPolicy) validateIngress(formats strfmt.Registry) error {
 
 	if swag.IsZero(m.Ingress) { // not required
+		return nil
+	}
+
+	return nil
+}
+
+func (m *CIDRPolicy) validateIngressSourceUserPolicy(formats strfmt.Registry) error {
+
+	if swag.IsZero(m.IngressSourceUserPolicy) { // not required
 		return nil
 	}
 

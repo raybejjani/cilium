@@ -14,9 +14,34 @@
 
 package policy
 
-import "github.com/cilium/cilium/common"
+import (
+	"fmt"
+
+	"github.com/cilium/cilium/common"
+	"github.com/cilium/cilium/pkg/labels"
+)
 
 // JoinPath returns a joined path from a and b.
 func JoinPath(a, b string) string {
 	return a + common.PathDelimiter + b
+}
+
+// extractPolicyNames returns a slice of policy names for the rule objects
+// passed in. It will use the k8s name if available, the description, and then
+// generate "policy#" if no other name is found
+func extractPolicyNames(sourcePolicies []*rule) []string {
+	k8sPolicyNameKey := "io.cilium.k8s-policy-name"
+	sourceNames := make([]string, 0, len(sourcePolicies))
+	for i, v := range sourcePolicies {
+		srcName := v.Rule.Labels.Get(labels.GetExtendedKeyFrom(k8sPolicyNameKey))
+		if srcName == "" {
+			srcName = v.Description
+		}
+		if srcName == "" {
+			srcName = fmt.Sprintf("policy%d", i)
+		}
+		sourceNames = append(sourceNames, srcName)
+	}
+
+	return sourceNames
 }
