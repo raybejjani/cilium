@@ -960,8 +960,18 @@ definitions:
         type: array
         items:
           type: string
+      ingress-source-user-policy:
+        description: Names of L4 policies in effect on this endpoint
+        type: array
+        items:
+          type: string
       egress:
         description: List of L4 egress rules
+        type: array
+        items:
+          type: string
+      egress-source-user-policy:
+        description: Names of L4 policies in effect on this endpoint
         type: array
         items:
           type: string

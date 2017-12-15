@@ -20,13 +20,23 @@ type L4Policy struct {
 	// List of L4 egress rules
 	Egress []string `json:"egress"`
 
+	// Names of L4 policies in effect on this endpoint
+	EgressSourceUserPolicy []string `json:"egress-source-user-policy"`
+
 	// List of L4 ingress rules
 	Ingress []string `json:"ingress"`
+
+	// Names of L4 policies in effect on this endpoint
+	IngressSourceUserPolicy []string `json:"ingress-source-user-policy"`
 }
 
 /* polymorph L4Policy egress false */
 
+/* polymorph L4Policy egress-source-user-policy false */
+
 /* polymorph L4Policy ingress false */
+
+/* polymorph L4Policy ingress-source-user-policy false */
 
 // Validate validates this l4 policy
 func (m *L4Policy) Validate(formats strfmt.Registry) error {
@@ -37,7 +47,17 @@ func (m *L4Policy) Validate(formats strfmt.Registry) error {
 		res = append(res, err)
 	}
 
+	if err := m.validateEgressSourceUserPolicy(formats); err != nil {
+		// prop
+		res = append(res, err)
+	}
+
 	if err := m.validateIngress(formats); err != nil {
+		// prop
+		res = append(res, err)
+	}
+
+	if err := m.validateIngressSourceUserPolicy(formats); err != nil {
 		// prop
 		res = append(res, err)
 	}
@@ -57,9 +77,27 @@ func (m *L4Policy) validateEgress(formats strfmt.Registry) error {
 	return nil
 }
 
+func (m *L4Policy) validateEgressSourceUserPolicy(formats strfmt.Registry) error {
+
+	if swag.IsZero(m.EgressSourceUserPolicy) { // not required
+		return nil
+	}
+
+	return nil
+}
+
 func (m *L4Policy) validateIngress(formats strfmt.Registry) error {
 
 	if swag.IsZero(m.Ingress) { // not required
+		return nil
+	}
+
+	return nil
+}
+
+func (m *L4Policy) validateIngressSourceUserPolicy(formats strfmt.Registry) error {
+
+	if swag.IsZero(m.IngressSourceUserPolicy) { // not required
 		return nil
 	}
 

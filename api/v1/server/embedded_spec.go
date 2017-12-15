@@ -1579,8 +1579,22 @@ func init() {
             "type": "string"
           }
         },
+        "egress-source-user-policy": {
+          "description": "Names of L4 policies in effect on this endpoint",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
         "ingress": {
           "description": "List of L4 ingress rules",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "ingress-source-user-policy": {
+          "description": "Names of L4 policies in effect on this endpoint",
           "type": "array",
           "items": {
             "type": "string"
