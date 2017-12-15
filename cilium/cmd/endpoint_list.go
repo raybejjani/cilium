@@ -50,6 +50,17 @@ func init() {
 	AddMultipleOutput(endpointListCmd)
 }
 
+// uniqueCount returns the count of unique strings in all slices passed in
+func uniqueCount(stringSets ...[]string) int {
+	set := map[string]bool{}
+	for _, stringSet := range stringSets {
+		for _, str := range stringSet {
+			set[str] = true
+		}
+	}
+	return len(set)
+}
+
 func listEndpoint(w *tabwriter.Writer, ep *models.Endpoint, id string, label string) {
 	var isIngressPolicyEnabled string
 	var isEgressPolicyEnabled string
@@ -67,6 +78,10 @@ func listEndpoint(w *tabwriter.Writer, ep *models.Endpoint, id string, label str
 		isIngressPolicyEnabled = PolicyDisabled
 		isEgressPolicyEnabled = PolicyEnabled
 	}
+	ingressPolicyCount := uniqueCount(ep.Policy.CidrPolicy.IngressSourceUserPolicy, ep.Policy.L4.IngressSourceUserPolicy)
+	egressPolicyCount := uniqueCount(ep.Policy.CidrPolicy.EgressSourceUserPolicy, ep.Policy.L4.EgressSourceUserPolicy)
+	isIngressPolicyEnabled = fmt.Sprintf("%s (%d policies)", isIngressPolicyEnabled, ingressPolicyCount)
+	isEgressPolicyEnabled = fmt.Sprintf("%s (%d policies)", isEgressPolicyEnabled, egressPolicyCount)
 	fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t\n",
 		ep.ID, isIngressPolicyEnabled, isEgressPolicyEnabled, id, label, ep.Addressing.IPV6, ep.Addressing.IPV4, ep.State)
 }
