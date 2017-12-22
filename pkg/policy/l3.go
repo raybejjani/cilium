@@ -35,7 +35,7 @@ type L3PolicyMap struct {
 	Map              map[string]net.IPNet // Allowed L3 prefixes
 	IPv6Count        int                  // Count of IPv6 prefixes in 'Map'
 	IPv4Count        int                  // Count of IPv4 prefixes in 'Map'
-	SourceUserPolicy []*rule              // The User policies that resulted in this Map
+	SourceUserPolicy []string             // The User policies that resulted in this Map
 }
 
 // Insert places 'cidr' in to map 'm'. Returns `1` if `cidr` is added
@@ -127,10 +127,10 @@ func NewL3Policy() *L3Policy {
 	return &L3Policy{
 		Ingress: L3PolicyMap{
 			Map:              make(map[string]net.IPNet),
-			SourceUserPolicy: make([]*rule, 0)},
+			SourceUserPolicy: make([]string, 0)},
 		Egress: L3PolicyMap{
 			Map:              make(map[string]net.IPNet),
-			SourceUserPolicy: make([]*rule, 0)},
+			SourceUserPolicy: make([]string, 0)},
 	}
 }
 
@@ -145,20 +145,16 @@ func (l3 *L3Policy) GetModel() *models.CIDRPolicy {
 		ingress = append(ingress, v.String())
 	}
 
-	ingressSource := extractPolicyNames(l3.Ingress.SourceUserPolicy)
-
 	egress := []string{}
 	for _, v := range l3.Egress.Map {
 		egress = append(egress, v.String())
 	}
 
-	egressSource := extractPolicyNames(l3.Egress.SourceUserPolicy)
-
 	return &models.CIDRPolicy{
 		Ingress:                 ingress,
-		IngressSourceUserPolicy: ingressSource,
+		IngressSourceUserPolicy: l3.Ingress.SourceUserPolicy,
 		Egress:                  egress,
-		EgressSourceUserPolicy:  egressSource,
+		EgressSourceUserPolicy:  l3.Egress.SourceUserPolicy,
 	}
 }
 

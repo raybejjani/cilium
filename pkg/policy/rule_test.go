@@ -547,6 +547,7 @@ func (ds *PolicyTestSuite) TestL3Policy(c *C) {
 	expected.Ingress.Map["2001:db8::/48"] = net.IPNet{IP: []byte{0x20, 1, 0xd, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, Mask: []byte{255, 255, 255, 255, 255, 255, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}}
 	expected.Ingress.Map["2001:db9::/128"] = net.IPNet{IP: []byte{0x20, 1, 0xd, 0xb9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, Mask: []byte{255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255}}
 	expected.Ingress.IPv6Count = 2
+	expected.Ingress.SourceUserPolicy = []string{"L3Ingress#0"}
 	expected.Egress.Map["10.1.0.0/16"] = net.IPNet{IP: []byte{10, 1, 0, 0}, Mask: []byte{255, 255, 0, 0}}
 	expected.Egress.Map["10.128.0.0/9"] = net.IPNet{IP: []byte{10, 128, 0, 0}, Mask: []byte{255, 128, 0, 0}}
 	expected.Egress.Map["10.0.0.0/10"] = net.IPNet{IP: []byte{10, 0, 0, 0}, Mask: []byte{255, 192, 0, 0}}
@@ -555,6 +556,7 @@ func (ds *PolicyTestSuite) TestL3Policy(c *C) {
 	expected.Egress.IPv4Count = 5
 	expected.Egress.Map["2001:dbf::/64"] = net.IPNet{IP: []byte{0x20, 1, 0xd, 0xbf, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, Mask: []byte{255, 255, 255, 255, 255, 255, 255, 255, 0, 0, 0, 0, 0, 0, 0, 0}}
 	expected.Egress.IPv6Count = 1
+	expected.Egress.SourceUserPolicy = []string{"L3Egress#0"}
 
 	toBar := &SearchContext{To: labels.ParseSelectLabelArray("bar")}
 	state := traceState{}
