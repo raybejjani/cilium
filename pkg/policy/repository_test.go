@@ -326,6 +326,8 @@ func (ds *PolicyTestSuite) TestMinikubeGettingStarted(c *C) {
 		},
 		Ingress: true,
 	}
+	// This is repeated for the same reasons as selectorFromApp2DupList above (maybe)
+	expected.Ingress.SourceUserPolicy = []string{"L4Ingress#0", "L4Ingress#0", "L4Ingress#0"}
 
 	c.Assert(len(l4policy.Ingress.Filters), Equals, 1)
 	c.Assert(*l4policy, comparator.DeepEquals, *expected)
@@ -333,6 +335,7 @@ func (ds *PolicyTestSuite) TestMinikubeGettingStarted(c *C) {
 	// L4 from app3 has no rules
 	expected = NewL4Policy()
 	l4policy, err = repo.ResolveL4Policy(fromApp3)
+	c.Assert(err, IsNil)
 	c.Assert(len(l4policy.Ingress.Filters), Equals, 0)
 	c.Assert(*l4policy, comparator.DeepEquals, *expected)
 }

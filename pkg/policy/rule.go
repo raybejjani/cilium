@@ -264,32 +264,44 @@ func (r *rule) resolveL4Policy(ctx *SearchContext, state *traceState, result *L4
 		if len(r.Ingress) == 0 {
 			ctx.PolicyTrace("    No L4 rules\n")
 		}
-		for _, ingressRule := range r.Ingress {
+		sourcePolicies := map[string]bool{}
+		for i, ingressRule := range r.Ingress {
 			cnt, err := mergeL4(ctx, "Ingress", ingressRule.FromEndpoints, ingressRule.ToPorts, &result.Ingress)
 			if err != nil {
 				return nil, err
 			}
 			found += cnt
 			if cnt > 0 {
-				result.Ingress.SourceUserPolicy = append(result.Ingress.SourceUserPolicy, r)
+				policyName := extractPolicyName(r.Rule, fmt.Sprintf("L4Ingress#%d", i))
+				sourcePolicies[policyName] = true
 			}
 		}
+		for policyName := range sourcePolicies {
+			result.Ingress.SourceUserPolicy = append(result.Ingress.SourceUserPolicy, policyName)
+		}
+		sort.Sort(sort.StringSlice(result.Ingress.SourceUserPolicy))
 	}
 
 	if !ctx.IngressL4Only {
 		if len(r.Egress) == 0 {
 			ctx.PolicyTrace("    No L4 rules\n")
 		}
-		for _, egressRule := range r.Egress {
+		sourcePolicies := map[string]bool{}
+		for i, egressRule := range r.Egress {
 			cnt, err := mergeL4(ctx, "Egress", nil, egressRule.ToPorts, &result.Egress)
 			if err != nil {
 				return nil, err
 			}
 			found += cnt
 			if cnt > 0 {
-				result.Egress.SourceUserPolicy = append(result.Egress.SourceUserPolicy, r)
+				policyName := extractPolicyName(r.Rule, fmt.Sprintf("L4Egress#%d", i))
+				sourcePolicies[policyName] = true
 			}
 		}
+		for policyName := range sourcePolicies {
+			result.Egress.SourceUserPolicy = append(result.Egress.SourceUserPolicy, policyName)
+		}
+		sort.Sort(sort.StringSlice(result.Egress.SourceUserPolicy))
 	}
 
 	if found > 0 {

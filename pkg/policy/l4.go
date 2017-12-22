@@ -232,7 +232,7 @@ func (l4 L4Filter) matchesLabels(labels labels.LabelArray) bool {
 // key format: "port/proto"
 type L4PolicyMap struct {
 	Filters          map[string]L4Filter
-	SourceUserPolicy []*rule
+	SourceUserPolicy []string
 }
 
 // HasRedirect returns true if at least one L4 filter contains a port
@@ -302,11 +302,11 @@ func NewL4Policy() *L4Policy {
 	return &L4Policy{
 		Ingress: L4PolicyMap{
 			Filters:          make(map[string]L4Filter),
-			SourceUserPolicy: make([]*rule, 0),
+			SourceUserPolicy: make([]string, 0),
 		},
 		Egress: L4PolicyMap{
 			Filters:          make(map[string]L4Filter),
-			SourceUserPolicy: make([]*rule, 0),
+			SourceUserPolicy: make([]string, 0),
 		},
 	}
 }
@@ -350,19 +350,15 @@ func (l4 *L4Policy) GetModel() *models.L4Policy {
 		ingress = append(ingress, v.MarshalIndent())
 	}
 
-	ingressSource := extractPolicyNames(l4.Ingress.SourceUserPolicy)
-
 	egress := []string{}
 	for _, v := range l4.Egress.Filters {
 		egress = append(egress, v.MarshalIndent())
 	}
 
-	egressSource := extractPolicyNames(l4.Egress.SourceUserPolicy)
-
 	return &models.L4Policy{
 		Ingress:                 ingress,
-		IngressSourceUserPolicy: ingressSource,
+		IngressSourceUserPolicy: l4.Ingress.SourceUserPolicy,
 		Egress:                  egress,
-		EgressSourceUserPolicy:  egressSource,
+		EgressSourceUserPolicy:  l4.Egress.SourceUserPolicy,
 	}
 }

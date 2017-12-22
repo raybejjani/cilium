@@ -128,9 +128,11 @@ func (s *K8sSuite) TestParseNetworkPolicy(c *C) {
 					Ingress: true,
 				},
 			},
+			SourceUserPolicy: []string{"L4Ingress#0"},
 		},
 		Egress: policy.L4PolicyMap{
-			Filters: map[string]policy.L4Filter{},
+			Filters:          map[string]policy.L4Filter{},
+			SourceUserPolicy: []string{},
 		},
 	})
 

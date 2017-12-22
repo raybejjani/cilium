@@ -153,6 +153,8 @@ func (ds *PolicyTestSuite) TestL4Policy(c *C) {
 		Port: 8080, Protocol: api.ProtoTCP, U8Proto: 6, FromEndpoints: nil,
 		L7Parser: "http", L7RulesPerEp: l7map, Ingress: true,
 	}
+	expected.Ingress.SourceUserPolicy = []string{"L4Ingress#0"}
+
 	expected.Egress.Filters["3000/TCP"] = L4Filter{
 		Port: 3000, Protocol: api.ProtoTCP, U8Proto: 6, Ingress: false,
 		L7RulesPerEp: L7DataMap{},
@@ -161,6 +163,7 @@ func (ds *PolicyTestSuite) TestL4Policy(c *C) {
 		Port: 3000, Protocol: api.ProtoUDP, U8Proto: 17, Ingress: false,
 		L7RulesPerEp: L7DataMap{},
 	}
+	expected.Egress.SourceUserPolicy = []string{"L4Egress#0"}
 
 	state := traceState{}
 	res, err := rule1.resolveL4Policy(toBar, &state, NewL4Policy())
@@ -228,6 +231,8 @@ func (ds *PolicyTestSuite) TestL4Policy(c *C) {
 		Port: 3000, Protocol: api.ProtoUDP, U8Proto: 17, Ingress: false,
 		L7RulesPerEp: L7DataMap{},
 	}
+	expected.Ingress.SourceUserPolicy = []string{"L4Ingress#0", "L4Ingress#1"}
+	expected.Egress.SourceUserPolicy = []string{"L4Egress#0"}
 
 	state = traceState{}
 	res, err = rule2.resolveL4Policy(toBar, &state, NewL4Policy())
@@ -281,6 +286,7 @@ func (ds *PolicyTestSuite) TestMergeL4Policy(c *C) {
 		Port: 80, Protocol: api.ProtoTCP, U8Proto: 6, FromEndpoints: mergedES,
 		L7Parser: "", L7RulesPerEp: L7DataMap{}, Ingress: true,
 	}
+	expected.Ingress.SourceUserPolicy = []string{"L4Ingress#0", "L4Ingress#1"}
 
 	state := traceState{}
 	res, err := rule1.resolveL4Policy(toBar, &state, NewL4Policy())
@@ -351,6 +357,7 @@ func (ds *PolicyTestSuite) TestMergeL7Policy(c *C) {
 		Port: 80, Protocol: api.ProtoTCP, U8Proto: 6, FromEndpoints: nil,
 		L7Parser: "http", L7RulesPerEp: l7map, Ingress: true,
 	}
+	expected.Ingress.SourceUserPolicy = []string{"L4Ingress#0", "L4Ingress#1", "L4Ingress#2"}
 
 	state := traceState{}
 	res, err := rule1.resolveL4Policy(toBar, &state, NewL4Policy())
@@ -419,6 +426,7 @@ func (ds *PolicyTestSuite) TestMergeL7Policy(c *C) {
 		Port: 80, Protocol: api.ProtoTCP, U8Proto: 6, FromEndpoints: nil,
 		L7Parser: "kafka", L7RulesPerEp: l7map, Ingress: true,
 	}
+	expected.Ingress.SourceUserPolicy = []string{"L4Ingress#0", "L4Ingress#1", "L4Ingress#2"}
 
 	state = traceState{}
 	res, err = rule2.resolveL4Policy(toBar, &state, NewL4Policy())
@@ -496,6 +504,7 @@ func (ds *PolicyTestSuite) TestMergeL7Policy(c *C) {
 		Port: 80, Protocol: api.ProtoTCP, U8Proto: 6, FromEndpoints: nil,
 		L7Parser: "kafka", L7RulesPerEp: l7map, Ingress: true,
 	}
+	expected.Ingress.SourceUserPolicy = []string{"L4Ingress#0", "L4Ingress#1"}
 
 	state = traceState{}
 	res, err = rule3.resolveL4Policy(toBar, &state, NewL4Policy())
