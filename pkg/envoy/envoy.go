@@ -2,7 +2,6 @@ package envoy
 
 import (
 	"io"
-	"io/ioutil"
 	"net"
 	"os"
 	"os/exec"
@@ -38,34 +37,13 @@ type Logger interface {
 	Log(entry *HttpLogEntry)
 }
 
-func createConfig(filePath string, adminAddress string) {
-	config := string(
-		`{
-  "listeners": [],
-  "admin": { "access_log_path": "/dev/null",
-             "address": "tcp://` + adminAddress + `" },
-  "cluster_manager": {
-    "clusters": []
-  }
-}
-`)
-
-	log.Debug("Envoy: Configuration file: ", config)
-	err := ioutil.WriteFile(filePath, []byte(config), 0644)
-	if err != nil {
-		log.WithError(err).Fatal("Envoy: Failed writing configuration file ", filePath)
-	}
-}
-
 // StartEnvoy starts an Envoy proxy instance. If 'debug' is true, an
 // debug version of the Envoy binary is started with the log level
 // 'debug', otherwise a production version is started at the default
 // log level.
-func StartEnvoy(debug bool, adminPort int, stateDir, logDir string, baseID uint64) *Envoy {
+func StartEnvoy(debug bool, adminPort uint32, stateDir, logDir string, baseID uint64) *Envoy {
 	bootstrapPath := filepath.Join(stateDir, "bootstrap.pb")
-	configPath := filepath.Join(stateDir, "envoy-config.json")
 	logPath := filepath.Join(logDir, "cilium-envoy.log")
-	adminAddress := "127.0.0.1:" + strconv.Itoa(adminPort)
 	ldsPath := filepath.Join(stateDir, "lds.sock")
 	rdsPath := filepath.Join(stateDir, "rds.sock")
 	accessLogPath := filepath.Join(stateDir, "access_log.sock")
@@ -74,8 +52,7 @@ func StartEnvoy(debug bool, adminPort int, stateDir, logDir string, baseID uint6
 
 	// Create static configuration
 	createBootstrap(bootstrapPath, "envoy1", "cluster1", "version1",
-		"ldsCluster", ldsPath, "rdsCluster", rdsPath, "cluster1")
-	createConfig(configPath, adminAddress)
+		"ldsCluster", ldsPath, "rdsCluster", rdsPath, "cluster1", adminPort)
 
 	e.startAccesslogServer(accessLogPath)
 
@@ -107,7 +84,7 @@ func StartEnvoy(debug bool, adminPort int, stateDir, logDir string, baseID uint6
 				name = "cilium-envoy-debug"
 				logLevel = "debug"
 			}
-			e.cmd = exec.Command(name, "-l", logLevel, "-c", configPath, "-b", bootstrapPath, "--base-id", strconv.FormatUint(baseID, 10))
+			e.cmd = exec.Command(name, "-l", logLevel, "-c", bootstrapPath, "--base-id", strconv.FormatUint(baseID, 10))
 			e.cmd.Stderr = logFile
 			e.cmd.Stdout = logFile
 
