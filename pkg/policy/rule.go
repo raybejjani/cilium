@@ -216,14 +216,20 @@ func (r *rule) resolveL4IngressPolicy(ctx *SearchContext, state *traceState, res
 // mergeCIDR inserts all of the CIDRs in ipRules to resMap. Returns the number
 // of CIDRs added to resMap.
 func mergeCIDR(ctx *SearchContext, dir string, ipRules []api.CIDR, ruleLabels labels.LabelArray, resMap *CIDRPolicyMap) int {
+	log.Warnf("FML mergeCIDR: %+v", ipRules)
 	found := 0
 
 	for _, r := range ipRules {
+		log.Warn("FML mergeCIDR loop")
 		strCIDR := string(r)
 		ctx.PolicyTrace("  Allows %s IP %s\n", dir, strCIDR)
 
 		found += resMap.Insert(strCIDR, ruleLabels)
 	}
+
+	//if len(ipRules) == 0 {
+	//	found += resMap.Insert("0.0.0.0/32", ruleLabels)
+	//}
 
 	return found
 }
@@ -265,8 +271,11 @@ func (r *rule) resolveCIDRPolicy(ctx *SearchContext, state *traceState, result *
 
 	state.selectRule(ctx, r)
 	found := 0
+	log.Warnf("FML rule.resolveCIDRPolicy egress: %v, ingress: %v", len(r.Egress), len(r.Ingress))
+	log.Warnf("FML rule.resolveCIDRPolicy %+v", r)
 
 	for _, ingressRule := range r.Ingress {
+		log.Warnf("FML rule.resolveCIDRPolicy ingress")
 		// TODO (ianvernon): GH-1658
 		var allCIDRs []api.CIDR
 		allCIDRs = append(allCIDRs, ingressRule.FromCIDR...)
@@ -282,9 +291,11 @@ func (r *rule) resolveCIDRPolicy(ctx *SearchContext, state *traceState, result *
 		if cnt := mergeCIDR(ctx, "Ingress", allCIDRs, r.Labels, &result.Ingress); cnt > 0 {
 			found += cnt
 		}
+		log.Warnf("FML rule.resolveCIDRPolicy ingress found %v", found)
 	}
 
 	for _, egressRule := range r.Egress {
+		log.Warnf("FML rule.resolveCIDRPolicy egress")
 		// TODO(ianvernon): GH-1658
 		var allCIDRs []api.CIDR
 		allCIDRs = append(allCIDRs, egressRule.ToCIDR...)
@@ -300,6 +311,7 @@ func (r *rule) resolveCIDRPolicy(ctx *SearchContext, state *traceState, result *
 		if cnt := mergeCIDR(ctx, "Egress", allCIDRs, r.Labels, &result.Egress); cnt > 0 {
 			found += cnt
 		}
+		log.Warnf("FML rule.resolveCIDRPolicy egress found %v", found)
 	}
 
 	if found > 0 {

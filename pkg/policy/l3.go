@@ -48,6 +48,7 @@ type CIDRPolicyMap struct {
 // Insert places 'cidr' and its corresponding rule labels into map 'm'. Returns
 // `1` if `cidr` is added to the map, `0` otherwise.
 func (m *CIDRPolicyMap) Insert(cidr string, ruleLabels labels.LabelArray) int {
+	log.Warn("FML inserting")
 	_, ipnet, err := net.ParseCIDR(cidr)
 	if err != nil {
 		var mask net.IPMask
@@ -73,6 +74,7 @@ func (m *CIDRPolicyMap) Insert(cidr string, ruleLabels labels.LabelArray) int {
 	key := ipnet.IP.String() + "/" + strconv.Itoa(ones)
 	if _, found := m.Map[key]; !found {
 		m.Map[key] = &CIDRPolicyMapRule{Prefix: *ipnet, DerivedFromRules: labels.LabelArrayList{ruleLabels}}
+		log.Warn("FML creating")
 		if ipnet.IP.To4() == nil {
 			m.IPv6PrefixCount[ones]++
 		} else {
@@ -81,6 +83,7 @@ func (m *CIDRPolicyMap) Insert(cidr string, ruleLabels labels.LabelArray) int {
 		return 1
 	} else {
 		m.Map[key].DerivedFromRules = append(m.Map[key].DerivedFromRules, ruleLabels)
+		log.Warn("FML appending")
 	}
 
 	return 0

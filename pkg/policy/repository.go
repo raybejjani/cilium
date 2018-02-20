@@ -191,8 +191,10 @@ func (p *Repository) ResolveCIDRPolicy(ctx *SearchContext) *CIDRPolicy {
 
 	ctx.PolicyTrace("Resolving L3 (CIDR) policy for %+v\n", ctx.To)
 
+	log.Warnf("FML repo.ResolveCIDRPolicy: %+v", p)
 	state := traceState{}
 	for _, r := range p.rules {
+		log.Warnf("FML repo.ResolveCIDRPolicy rule : %+v", r)
 		r.resolveCIDRPolicy(ctx, &state, result)
 		state.ruleID++
 	}
