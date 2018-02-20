@@ -21,6 +21,9 @@ type CIDR string
 // CIDRMatchAll is a []CIDR that matches everything
 var CIDRMatchAll = []CIDR{CIDR("0.0.0.0/0"), CIDR("::/0")}
 
+// CIDRMatchNone is a []CIDR that matches nothing
+var CIDRMatchNone = []CIDR{CIDR("0.0.0.0/32"), CIDR("::/128")}
+
 // CIDRRule is a rule that specifies a CIDR prefix to/from which outside
 // communication  is allowed, along with an optional list of subnets within that
 // CIDR prefix to/from which outside communication is not allowed.

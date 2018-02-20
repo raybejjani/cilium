@@ -17,6 +17,7 @@ package policy
 import (
 	"fmt"
 	"net"
+	"reflect"
 
 	"github.com/cilium/cilium/pkg/ip"
 	"github.com/cilium/cilium/pkg/labels"
@@ -288,6 +289,9 @@ func (r *rule) resolveCIDRPolicy(ctx *SearchContext, state *traceState, result *
 			}
 		}
 
+		if len(r.Ingress) == 1 && reflect.DeepEqual(r.Ingress[0], api.IngressRule{}) {
+			allCIDRs = append(allCIDRs, api.CIDRMatchNone...)
+		}
 		if cnt := mergeCIDR(ctx, "Ingress", allCIDRs, r.Labels, &result.Ingress); cnt > 0 {
 			found += cnt
 		}
@@ -308,6 +312,9 @@ func (r *rule) resolveCIDRPolicy(ctx *SearchContext, state *traceState, result *
 			}
 		}
 
+		if len(r.Egress) == 1 && reflect.DeepEqual(r.Egress[0], api.EgressRule{}) {
+			allCIDRs = append(allCIDRs, api.CIDRMatchNone...)
+		}
 		if cnt := mergeCIDR(ctx, "Egress", allCIDRs, r.Labels, &result.Egress); cnt > 0 {
 			found += cnt
 		}
