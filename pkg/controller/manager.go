@@ -65,11 +65,17 @@ func (m *Manager) UpdateController(name string, params ControllerParams) *Contro
 		oldCtrl.stopController()
 	}
 
+	userStop := params.StopChan
+	if userStop == nil {
+		userStop = make(chan struct{}, 0)
+	}
+
 	ctrl := &Controller{
-		name:   name,
-		params: params,
-		uuid:   uuid.NewUUID().String(),
-		stop:   make(chan struct{}, 0),
+		name:     name,
+		params:   params,
+		uuid:     uuid.NewUUID().String(),
+		stop:     make(chan struct{}, 0),
+		userStop: userStop,
 	}
 
 	m.controllers[ctrl.name] = ctrl

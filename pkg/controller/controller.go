@@ -45,6 +45,11 @@ type ControllerParams struct {
 	// not be checked after StopFunc is run.
 	StopFunc ControllerFunc
 
+	// StopChan can be closed to induce the controller to stop and exit. It is
+	// not closed by Controller.StopController() and is safe to use with
+	// Context.Done() channels.
+	StopChan chan struct{}
+
 	// If set to any other value than 0, will cause DoFunc to be run in the
 	// specified interval. The interval starts from when the DoFunc has
 	// returned last
@@ -120,6 +125,7 @@ type Controller struct {
 	lastErrorStamp    time.Time
 	uuid              string
 	stop              chan struct{}
+	userStop          chan struct{} // user provided stop channel
 }
 
 // GetSuccessCount returns the number of successful controller runs
@@ -201,6 +207,9 @@ func (c *Controller) runController() {
 
 		select {
 		case <-c.stop:
+			goto shutdown
+
+		case <-c.userStop:
 			goto shutdown
 
 		case <-time.After(interval):
