@@ -1215,9 +1215,10 @@ func (ds *PolicyTestSuite) TestPolicyEntityValidationEntitySelectorsFill(c *C) {
 
 func (ds *PolicyTestSuite) TestL3RuleLabels(c *C) {
 	ruleLabels := map[string]labels.LabelArray{
-		"rule0": labels.ParseLabelArray("name=apiRule0"),
-		"rule1": labels.ParseLabelArray("name=apiRule1"),
-		"rule2": labels.ParseLabelArray("name=apiRule2"),
+		"rule0":       labels.ParseLabelArray("name=apiRule0"),
+		"rule1":       labels.ParseLabelArray("name=apiRule1"),
+		"rule2":       labels.ParseLabelArray("name=apiRule2"),
+		"defaultdeny": labels.ParseLabelArray("name=defaultdeny"),
 	}
 
 	rules := map[string]api.Rule{
@@ -1255,6 +1256,12 @@ func (ds *PolicyTestSuite) TestL3RuleLabels(c *C) {
 				},
 			},
 		},
+		"defaultdeny": {
+			EndpointSelector: api.NewESFromLabels(labels.ParseSelectLabel("bar")),
+			Labels:           ruleLabels["defaultdeny"],
+			Ingress:          []api.IngressRule{{}},
+			Egress:           []api.EgressRule{{}},
+		},
 	}
 
 	testCases := []struct {
@@ -1269,8 +1276,12 @@ func (ds *PolicyTestSuite) TestL3RuleLabels(c *C) {
 			rulesToApply:          []string{"rule0"},
 			expectedIngressLabels: nil,
 			expectedEgressLabels:  nil,
-		},
-		{
+		}, {
+			description:           "Default deny rule that matches. Should apply labels",
+			rulesToApply:          []string{"defaultdeny"},
+			expectedIngressLabels: map[string]labels.LabelArrayList{"0.0.0.0/32": {ruleLabels["defaultdeny"]}, "::/128": {ruleLabels["defaultdeny"]}},
+			expectedEgressLabels:  map[string]labels.LabelArrayList{"0.0.0.0/32": {ruleLabels["defaultdeny"]}, "::/128": {ruleLabels["defaultdeny"]}},
+		}, {
 			description:           "A rule that matches. Should apply labels",
 			rulesToApply:          []string{"rule1"},
 			expectedIngressLabels: map[string]labels.LabelArrayList{"10.0.1.0/32": {ruleLabels["rule1"]}},
@@ -1284,6 +1295,19 @@ func (ds *PolicyTestSuite) TestL3RuleLabels(c *C) {
 			expectedEgressLabels: map[string]labels.LabelArrayList{
 				"10.1.0.0/32": {ruleLabels["rule1"]},
 				"10.2.0.0/32": {ruleLabels["rule2"]}},
+		}, {
+			description:  "Multiple matching rules & default deny. All labels should apply",
+			rulesToApply: []string{"rule0", "rule1", "rule2", "defaultdeny"},
+			expectedIngressLabels: map[string]labels.LabelArrayList{
+				"10.0.1.0/32": {ruleLabels["rule1"]},
+				"10.0.2.0/32": {ruleLabels["rule2"]},
+				"0.0.0.0/32":  {ruleLabels["defaultdeny"]},
+				"::/128":      {ruleLabels["defaultdeny"]}},
+			expectedEgressLabels: map[string]labels.LabelArrayList{
+				"10.1.0.0/32": {ruleLabels["rule1"]},
+				"10.2.0.0/32": {ruleLabels["rule2"]},
+				"0.0.0.0/32":  {ruleLabels["defaultdeny"]},
+				"::/128":      {ruleLabels["defaultdeny"]}},
 		}}
 
 	// endpoint selector for all tests
