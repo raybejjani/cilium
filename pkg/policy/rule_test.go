@@ -1343,10 +1343,11 @@ func (ds *PolicyTestSuite) TestL3RuleLabels(c *C) {
 
 func (ds *PolicyTestSuite) TestL4RuleLabels(c *C) {
 	ruleLabels := map[string]labels.LabelArray{
-		"rule0":  labels.ParseLabelArray("name=apiRule0"),
-		"rule1":  labels.ParseLabelArray("name=apiRule1"),
-		"rule2":  labels.ParseLabelArray("name=apiRule2"),
-		"l7Rule": labels.ParseLabelArray("name=l7rule"),
+		"rule0":        labels.ParseLabelArray("name=apiRule0"),
+		"rule1":        labels.ParseLabelArray("name=apiRule1"),
+		"rule2":        labels.ParseLabelArray("name=apiRule2"),
+		"l7Rule":       labels.ParseLabelArray("name=l7rule"),
+		"identityRule": labels.ParseLabelArray("name=identityRule"),
 	}
 
 	rules := map[string]api.Rule{
@@ -1417,6 +1418,12 @@ func (ds *PolicyTestSuite) TestL4RuleLabels(c *C) {
 				},
 			},
 		},
+		"identityRule": {
+			EndpointSelector: api.NewESFromLabels(labels.ParseSelectLabel("bar")),
+			Labels:           ruleLabels["identityRule"],
+			Ingress:          []api.IngressRule{},
+			Egress:           []api.EgressRule{},
+		},
 	}
 
 	testCases := []struct {
@@ -1450,6 +1457,11 @@ func (ds *PolicyTestSuite) TestL4RuleLabels(c *C) {
 			expectedEgressLabels: map[string]labels.LabelArrayList{
 				"1100/TCP": {ruleLabels["rule1"]},
 				"1200/TCP": {ruleLabels["rule2"]}},
+		}, {
+			description:           "Identity rule. Should apply labels",
+			rulesToApply:          []string{"identityRule"},
+			expectedIngressLabels: map[string]labels.LabelArrayList{"10.0.1.0/32": {ruleLabels["identityRule"]}},
+			expectedEgressLabels:  map[string]labels.LabelArrayList{},
 		}}
 
 	// endpoint selector for all tests
