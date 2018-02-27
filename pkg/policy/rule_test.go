@@ -1343,9 +1343,10 @@ func (ds *PolicyTestSuite) TestL3RuleLabels(c *C) {
 
 func (ds *PolicyTestSuite) TestL4RuleLabels(c *C) {
 	ruleLabels := map[string]labels.LabelArray{
-		"rule0": labels.ParseLabelArray("name=apiRule0"),
-		"rule1": labels.ParseLabelArray("name=apiRule1"),
-		"rule2": labels.ParseLabelArray("name=apiRule2"),
+		"rule0":  labels.ParseLabelArray("name=apiRule0"),
+		"rule1":  labels.ParseLabelArray("name=apiRule1"),
+		"rule2":  labels.ParseLabelArray("name=apiRule2"),
+		"l7Rule": labels.ParseLabelArray("name=l7rule"),
 	}
 
 	rules := map[string]api.Rule{
@@ -1392,6 +1393,30 @@ func (ds *PolicyTestSuite) TestL4RuleLabels(c *C) {
 				},
 			},
 		},
+		"l7Rule": {
+			EndpointSelector: api.NewESFromLabels(labels.ParseSelectLabel("bar")),
+			Labels:           ruleLabels["l7Rule"],
+			Ingress: []api.IngressRule{
+				{
+					ToPorts: []api.PortRule{{
+						Ports: []api.PortProtocol{{Port: "1070", Protocol: api.ProtoTCP}},
+						Rules: &api.L7Rules{Kafka: []api.PortRuleKafka{
+							{Topic: "l7ingress-topic"},
+						}},
+					}},
+				},
+			},
+			Egress: []api.EgressRule{
+				{
+					ToPorts: []api.PortRule{{
+						Ports: []api.PortProtocol{{Port: "1700", Protocol: api.ProtoTCP}},
+						Rules: &api.L7Rules{Kafka: []api.PortRuleKafka{
+							{Topic: "l7egress-topic"},
+						}},
+					}},
+				},
+			},
+		},
 	}
 
 	testCases := []struct {
@@ -1406,12 +1431,16 @@ func (ds *PolicyTestSuite) TestL4RuleLabels(c *C) {
 			rulesToApply:          []string{"rule0"},
 			expectedIngressLabels: map[string]labels.LabelArrayList{},
 			expectedEgressLabels:  map[string]labels.LabelArrayList{},
-		},
-		{
+		}, {
 			description:           "A rule that matches. Should apply labels",
 			rulesToApply:          []string{"rule1"},
 			expectedIngressLabels: map[string]labels.LabelArrayList{"1010/TCP": {ruleLabels["rule1"]}},
 			expectedEgressLabels:  map[string]labels.LabelArrayList{"1100/TCP": {ruleLabels["rule1"]}},
+		}, {
+			description:           "A L7 rule that matches. Should apply labels",
+			rulesToApply:          []string{"l7Rule"},
+			expectedIngressLabels: map[string]labels.LabelArrayList{"1070/TCP": {ruleLabels["l7Rule"]}},
+			expectedEgressLabels:  map[string]labels.LabelArrayList{"1700/TCP": {ruleLabels["l7Rule"]}},
 		}, {
 			description:  "Multiple matching rules. Should apply labels from all that have rule entries",
 			rulesToApply: []string{"rule0", "rule1", "rule2"},
