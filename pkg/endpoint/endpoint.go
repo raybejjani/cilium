@@ -588,9 +588,10 @@ func (e *Endpoint) RunK8sCiliumEndpointSync() {
 			RunInterval: 10 * time.Second,
 			DoFunc: func() (err error) {
 				var (
-					podName    string
-					namespace  string
-					isHealthEP = e.HasLabels(healthLbls)
+					podName     string
+					namespace   string
+					labelsToAdd = map[string]string{}     // pod labels to mirror on CEP
+					isHealthEP  = e.HasLabels(healthLbls) // special casing for health EP
 				)
 
 				switch isHealthEP {
@@ -619,6 +620,10 @@ func (e *Endpoint) RunK8sCiliumEndpointSync() {
 				}
 				k8sMdl := (*cilium_v2.CiliumEndpointDetail)(mdl)
 
+				if pod, err := k8s.Client().CoreV1().Pods(namespace).Get(podName, meta_v1.GetOptions{}); err == nil {
+					labelsToAdd = pod.Labels
+				}
+
 				cep, err := ciliumClient.CiliumEndpoints(namespace).Get(podName, meta_v1.GetOptions{})
 				switch {
 				// The CEP doesn't exist. We will fall through to the create code below
@@ -643,6 +648,7 @@ func (e *Endpoint) RunK8sCiliumEndpointSync() {
 				case err == nil:
 					// Update the copy of the cep
 					k8sMdl.DeepCopyInto(&cep.Status)
+					cep.ObjectMeta.Labels = labelsToAdd
 
 					if _, err = ciliumClient.CiliumEndpoints(namespace).Update(cep); err != nil {
 						scopedLog.WithError(err).Error("Cannot update CEP")
@@ -656,7 +662,8 @@ func (e *Endpoint) RunK8sCiliumEndpointSync() {
 				// The CEP was not found, this is the first creation of the endpoint
 				cep = &cilium_v2.CiliumEndpoint{
 					ObjectMeta: meta_v1.ObjectMeta{
-						Name: podName,
+						Name:   podName,
+						Labels: labelsToAdd,
 					},
 					Status: *k8sMdl,
 				}
