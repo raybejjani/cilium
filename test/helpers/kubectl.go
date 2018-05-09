@@ -373,6 +373,7 @@ func (kub *Kubectl) MicroscopeStart() (error, func() error) {
 	res := kub.ExecContext(ctx, cmd, ExecOptions{SkipLog: true})
 
 	cb := func() error {
+		defer kub.Delete(microscopeManifest)
 		cancel()
 		testPath, err := CreateReportDirectory()
 		if err != nil {
