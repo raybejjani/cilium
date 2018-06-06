@@ -254,18 +254,12 @@ func (m *Monitor) connectionHandler(parentCtx context.Context, server net.Listen
 	}
 }
 
-// send writes the payload.Meta and the actual payload to the active
-// connections.
+// send enqueues the payload to all listeners.
 func (m *Monitor) send(pl *payload.Payload) {
-	buf, err := pl.BuildMessage()
-	if err != nil {
-		log.WithError(err).Error("Unable to send notification to listeners")
-	}
-
 	m.Lock()
 	defer m.Unlock()
 	for ml := range m.listeners {
-		ml.enqueue(buf)
+		ml.enqueue(pl)
 	}
 }
 
