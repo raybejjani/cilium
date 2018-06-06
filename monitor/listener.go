@@ -15,6 +15,7 @@
 package main
 
 import (
+	"encoding/gob"
 	"net"
 	"os"
 	"syscall"
@@ -67,13 +68,65 @@ func (ml *listenerv1_0) drainQueue() {
 		ml.cleanupFn(ml)
 	}()
 
+	enc := gob.NewEncoder(ml.conn)
 	for pl := range ml.queue {
-		buf, err := pl.BuildMessage()
-		if err != nil {
-			log.WithError(err).Error("Unable to send notification to listeners")
+		if err := pl.EncodeBinary(enc); err != nil {
+			if op, ok := err.(*net.OpError); ok {
+				if syscerr, ok := op.Err.(*os.SyscallError); ok {
+					if errn, ok := syscerr.Err.(syscall.Errno); ok {
+						if errn == syscall.EPIPE {
+							log.Info("Listener disconnected")
+							return
+						}
+					}
+				}
+			}
+			log.WithError(err).Warn("Removing listener due to write failure")
+			return
 		}
+	}
+}
 
-		if _, err := ml.conn.Write(buf); err != nil {
+// listenerv1_2 implements the ciliim-node-monitor API protocol compatible with
+// cilium 1.2
+// cleanupFn is called on exit
+type listenerv1_2 struct {
+	conn      net.Conn
+	queue     chan *payload.Payload
+	cleanupFn func(monitorListener)
+}
+
+func newListenerv1_2(c net.Conn, queueSize int, cleanupFn func(monitorListener)) *listenerv1_2 {
+	ml := &listenerv1_2{
+		conn:      c,
+		queue:     make(chan *payload.Payload, queueSize),
+		cleanupFn: cleanupFn,
+	}
+
+	go ml.drainQueue()
+
+	return ml
+}
+
+func (ml *listenerv1_2) Enqueue(pl *payload.Payload) {
+	select {
+	case ml.queue <- pl:
+	default:
+		log.Debugf("Per listener queue is full, dropping message")
+	}
+}
+
+// drainQueue encodes and sends monitor payloads to the listener. It is
+// intended to be a goroutine.
+func (ml *listenerv1_2) drainQueue() {
+	defer func() {
+		ml.conn.Close()
+		ml.cleanupFn(ml)
+	}()
+
+	enc := gob.NewEncoder(ml.conn)
+	for pl := range ml.queue {
+		if err := pl.EncodeBinary(enc); err != nil {
 			if op, ok := err.(*net.OpError); ok {
 				if syscerr, ok := op.Err.(*os.SyscallError); ok {
 					if errn, ok := syscerr.Err.(syscall.Errno); ok {

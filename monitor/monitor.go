@@ -74,9 +74,9 @@ func (m *Monitor) agentPipeReader(ctx context.Context, agentPipe io.Reader) {
 	log.Info("Beginning to read cilium agent events")
 	defer log.Info("Stopped reading cilium agent events")
 
-	meta, p := payload.Meta{}, payload.Payload{}
+	p := payload.Payload{}
 	for !isCtxDone(ctx) {
-		err := payload.ReadMetaPayload(agentPipe, &meta, &p)
+		err := p.ReadBinary(agentPipe)
 		switch {
 		// this captures the case where we are shutting down and main closes the
 		// pipe socket
@@ -132,7 +132,7 @@ func (m *Monitor) registerNewListener(parentCtx context.Context, conn net.Conn) 
 		go m.perfEventReader(perfEventReaderCtx, m.nPages)
 	}
 
-	newListener := newListenerv1_0(conn, queueSize, m.removeListener)
+	newListener := newListenerv1_2(conn, queueSize, m.removeListener)
 	m.listeners[newListener] = struct{}{}
 
 	log.WithField("count.listener", len(m.listeners)).Info("New listener connected.")

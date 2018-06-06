@@ -336,10 +336,10 @@ start:
 
 	defer conn.Close()
 
-	var meta payload.Meta
 	var pl payload.Payload
+	dec := gob.NewDecoder(conn)
 	for {
-		if err := payload.ReadMetaPayload(conn, &meta, &pl); err != nil {
+		if err := pl.DecodeBinary(dec); err != nil {
 			if err == io.EOF || err == io.ErrUnexpectedEOF {
 				// EOF may be due to invalid payload size. Close the connection just in case.
 				conn.Close()
