@@ -20,14 +20,14 @@ import (
 	"syscall"
 )
 
-type monitorListener struct {
+type listenerv1_0 struct {
 	conn      net.Conn
 	queue     chan []byte
-	cleanupFn func(*monitorListener)
+	cleanupFn func(*listenerv1_0)
 }
 
-func newMonitorListener(c net.Conn, queueSize int, cleanupFn func(*monitorListener)) *monitorListener {
-	ml := &monitorListener{
+func newListenerv1_0(c net.Conn, queueSize int, cleanupFn func(*listenerv1_0)) *listenerv1_0 {
+	ml := &listenerv1_0{
 		conn:      c,
 		queue:     make(chan []byte, queueSize),
 		cleanupFn: cleanupFn,
@@ -38,7 +38,7 @@ func newMonitorListener(c net.Conn, queueSize int, cleanupFn func(*monitorListen
 	return ml
 }
 
-func (ml *monitorListener) enqueue(msg []byte) {
+func (ml *listenerv1_0) enqueue(msg []byte) {
 	select {
 	case ml.queue <- msg:
 	default:
@@ -46,7 +46,7 @@ func (ml *monitorListener) enqueue(msg []byte) {
 	}
 }
 
-func (ml *monitorListener) drainQueue() {
+func (ml *listenerv1_0) drainQueue() {
 	defer func() {
 		ml.conn.Close()
 		ml.cleanupFn(ml)
