@@ -22,13 +22,24 @@ import (
 	"github.com/cilium/cilium/monitor/payload"
 )
 
+// monitorListener is a generic consumer of monitor events. Implementers are
+// expected to handle errors as needed, including exiting.
+type monitorListener interface {
+	// Enqueue adds this payload to the send queue. Any errors should be logged
+	// and handled appropriately.
+	Enqueue(pl *payload.Payload)
+}
+
+// listenerv1_0 implements the ciliim-node-monitor API protocol compatible with
+// cilium 1.0
+// cleanupFn is called on exit
 type listenerv1_0 struct {
 	conn      net.Conn
 	queue     chan *payload.Payload
-	cleanupFn func(*listenerv1_0)
+	cleanupFn func(monitorListener)
 }
 
-func newListenerv1_0(c net.Conn, queueSize int, cleanupFn func(*listenerv1_0)) *listenerv1_0 {
+func newListenerv1_0(c net.Conn, queueSize int, cleanupFn func(monitorListener)) *listenerv1_0 {
 	ml := &listenerv1_0{
 		conn:      c,
 		queue:     make(chan *payload.Payload, queueSize),
@@ -40,7 +51,7 @@ func newListenerv1_0(c net.Conn, queueSize int, cleanupFn func(*listenerv1_0)) *
 	return ml
 }
 
-func (ml *listenerv1_0) enqueue(pl *payload.Payload) {
+func (ml *listenerv1_0) Enqueue(pl *payload.Payload) {
 	select {
 	case ml.queue <- pl:
 	default:
@@ -48,6 +59,8 @@ func (ml *listenerv1_0) enqueue(pl *payload.Payload) {
 	}
 }
 
+// drainQueue encodes and sends monitor payloads to the listener. It is
+// intended to be a goroutine.
 func (ml *listenerv1_0) drainQueue() {
 	defer func() {
 		ml.conn.Close()
