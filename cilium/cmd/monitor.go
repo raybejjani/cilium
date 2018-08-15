@@ -31,6 +31,7 @@ import (
 	"github.com/cilium/cilium/monitor/payload"
 	"github.com/cilium/cilium/pkg/byteorder"
 	"github.com/cilium/cilium/pkg/defaults"
+	"github.com/cilium/cilium/pkg/fqdn/readdns"
 	"github.com/cilium/cilium/pkg/monitor"
 
 	"github.com/spf13/cobra"
@@ -286,12 +287,15 @@ func receiveEvent(data []byte, cpu int) {
 
 	switch messageType {
 	case monitor.MessageTypeDrop:
+		readdns.ReadDNS(data[monitor.DropNotifyLen:])
 		dropEvents(prefix, data)
 	case monitor.MessageTypeDebug:
+		readdns.ReadDNS(data[monitor.DebugCaptureLen:])
 		debugEvents(prefix, data)
 	case monitor.MessageTypeCapture:
 		captureEvents(prefix, data)
 	case monitor.MessageTypeTrace:
+		readdns.ReadDNS(data[monitor.TraceNotifyLen:])
 		traceEvents(prefix, data)
 	case monitor.MessageTypeAccessLog:
 		logRecordEvents(prefix, data)

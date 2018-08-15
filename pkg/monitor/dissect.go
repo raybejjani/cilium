@@ -19,11 +19,13 @@ import (
 	"fmt"
 	"net"
 
+	"github.com/cilium/cilium/pkg/fqdn/readdns"
 	"github.com/cilium/cilium/pkg/lock"
+
+	"strconv"
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
-	"strconv"
 )
 
 var (
@@ -34,9 +36,10 @@ var (
 	icmp6  layers.ICMPv6
 	tcp    layers.TCP
 	udp    layers.UDP
+	dns    layers.DNS
 	parser = gopacket.NewDecodingLayerParser(
 		layers.LayerTypeEthernet,
-		&eth, &ip4, &ip6, &icmp4, &icmp6, &tcp, &udp)
+		&eth, &ip4, &ip6, &icmp4, &icmp6, &tcp, &udp, &dns)
 	decoded     = []gopacket.LayerType{}
 	dissectLock lock.Mutex
 )
@@ -118,12 +121,16 @@ func GetConnectionSummary(data []byte) string {
 			net.JoinHostPort(srcIP.String(), srcPort),
 			net.JoinHostPort(dstIP.String(), dstPort),
 			proto)
+		s = readdns.ReplaceDNS(s, srcIP)
+		s = readdns.ReplaceDNS(s, dstIP)
 		if proto == "tcp" {
 			s += " " + getTCPInfo()
 		}
 		return s
 	case hasIP:
-		return fmt.Sprintf("%s -> %s", srcIP, dstIP)
+		srcIPStr := readdns.ReplaceDNS(srcIP.String(), srcIP)
+		dstIPStr := readdns.ReplaceDNS(dstIP.String(), dstIP)
+		return fmt.Sprintf("%s -> %s", srcIPStr, dstIPStr)
 	case hasEth:
 		return fmt.Sprintf("%s -> %s %s", eth.SrcMAC, eth.DstMAC, eth.EthernetType.String())
 	}
@@ -145,13 +152,21 @@ func Dissect(dissect bool, data []byte) {
 			case layers.LayerTypeEthernet:
 				fmt.Println(gopacket.LayerString(&eth))
 			case layers.LayerTypeIPv4:
-				fmt.Println(gopacket.LayerString(&ip4))
+				line := gopacket.LayerString(&ip4)
+				line = readdns.ReplaceDNS(line, ip4.DstIP)
+				line = readdns.ReplaceDNS(line, ip4.SrcIP)
+				fmt.Println(line)
 			case layers.LayerTypeIPv6:
-				fmt.Println(gopacket.LayerString(&ip6))
+				line := gopacket.LayerString(&ip6)
+				line = readdns.ReplaceDNS(line, ip6.DstIP)
+				line = readdns.ReplaceDNS(line, ip6.SrcIP)
+				fmt.Println(line)
 			case layers.LayerTypeTCP:
 				fmt.Println(gopacket.LayerString(&tcp))
 			case layers.LayerTypeUDP:
 				fmt.Println(gopacket.LayerString(&udp))
+			case layers.LayerTypeDNS:
+				fmt.Println(gopacket.LayerString(&dns))
 			case layers.LayerTypeICMPv4:
 				fmt.Println(gopacket.LayerString(&icmp4))
 			case layers.LayerTypeICMPv6:
@@ -187,6 +202,7 @@ type DissectSummary struct {
 	L2       *Flow  `json:"l2,omitempty"`
 	L3       *Flow  `json:"l3,omitempty"`
 	L4       *Flow  `json:"l4,omitempty"`
+	DNS      string `json:"dns,omitempty"`
 }
 
 // GetDissectSummary returns DissectSummary created from data
@@ -224,6 +240,8 @@ func GetDissectSummary(data []byte) *DissectSummary {
 			ret.ICMPv4 = gopacket.LayerString(&icmp4)
 		case layers.LayerTypeICMPv6:
 			ret.ICMPv6 = gopacket.LayerString(&icmp6)
+		case layers.LayerTypeDNS:
+			ret.DNS = gopacket.LayerString(&dns)
 		}
 	}
 	return ret
