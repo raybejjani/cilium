@@ -37,6 +37,7 @@ import (
 	"github.com/cilium/cilium/pkg/endpointmanager"
 	"github.com/cilium/cilium/pkg/envoy"
 	"github.com/cilium/cilium/pkg/flowdebug"
+	"github.com/cilium/cilium/pkg/fqdn"
 	"github.com/cilium/cilium/pkg/identity"
 	"github.com/cilium/cilium/pkg/ipam"
 	"github.com/cilium/cilium/pkg/k8s"
@@ -818,6 +819,17 @@ func runDaemon() {
 
 	log.Info("Launching node monitor daemon")
 	go d.nodeMonitor.Run(path.Join(defaults.RuntimePath, defaults.EventsPipe), bpf.GetMapRoot())
+	go func() {
+		for {
+			time.Sleep(1 * time.Second)
+			// FIX PATH param
+			if err := fqdn.StartDNSListener(""); err != nil {
+				log.WithError(err).Error("Cannot start DNS monitor listener")
+			}
+			log.Info("DNS monitor listener started")
+			break
+		}
+	}()
 
 	if err := d.EnableK8sWatcher(5 * time.Minute); err != nil {
 		log.WithError(err).Fatal("Unable to establish connection to Kubernetes apiserver")

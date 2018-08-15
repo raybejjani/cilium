@@ -286,12 +286,15 @@ func receiveEvent(data []byte, cpu int) {
 
 	switch messageType {
 	case monitor.MessageTypeDrop:
+		monitor.ReadDNS(data[monitor.DropNotifyLen:])
 		dropEvents(prefix, data)
 	case monitor.MessageTypeDebug:
+		monitor.ReadDNS(data[monitor.DebugCaptureLen:])
 		debugEvents(prefix, data)
 	case monitor.MessageTypeCapture:
 		captureEvents(prefix, data)
 	case monitor.MessageTypeTrace:
+		monitor.ReadDNS(data[monitor.TraceNotifyLen:])
 		traceEvents(prefix, data)
 	case monitor.MessageTypeAccessLog:
 		logRecordEvents(prefix, data)
