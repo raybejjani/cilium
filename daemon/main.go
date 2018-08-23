@@ -1009,6 +1009,9 @@ func runDaemon() {
 	api.DaemonGetMapHandler = NewGetMapHandler(d)
 	api.DaemonGetMapNameHandler = NewGetMapNameHandler(d)
 
+	// /discovery/fqdn
+	api.PolicyGetDiscoveryFqdnHandler = NewGetDiscoveryFqdnHandler(d)
+
 	server := server.NewServer(api)
 	server.EnabledListeners = []string{"unix"}
 	server.SocketPath = flags.Filename(socketPath)

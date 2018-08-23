@@ -124,6 +124,10 @@ type Daemon struct {
 	nodeMonitor  *monitorLaunch.NodeMonitor
 	ciliumHealth *health.CiliumHealth
 
+	// dnsCache is the cache to use for /discovery/fqdn and DNS subsytems like
+	// fqdn.DNSPoller
+	dnsCache *fqdn.DNSCache
+
 	// dnsPoller is used to implement ToFQDN rules
 	dnsPoller *fqdn.DNSPoller
 
@@ -1128,6 +1132,8 @@ func NewDaemon() (*Daemon, *endpointRestoreState, error) {
 		// build queue never blocks.
 		buildEndpointChan: make(chan *endpoint.Request, lxcmap.MaxEntries),
 		compilationMutex:  new(lock.RWMutex),
+
+		dnsCache: fqdn.DefaultDNSCache,
 	}
 
 	workloads.Init(&d)
@@ -1344,6 +1350,7 @@ func NewDaemon() (*Daemon, *endpointRestoreState, error) {
 		return nil, nil, err
 	}
 	d.dnsPoller = fqdn.NewDNSPoller(fqdn.DNSPollerConfig{
+		Cache:          d.dnsCache,
 		LookupDNSNames: fqdn.DNSLookupDefaultResolver,
 		AddGeneratedRules: func(generatedRules []*policyApi.Rule) error {
 			// Insert the new rules into the policy repository. We need them to

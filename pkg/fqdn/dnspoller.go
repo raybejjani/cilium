@@ -321,6 +321,20 @@ func (poller *DNSPoller) GetDNSNames() (dnsNames []string) {
 	return dnsNames
 }
 
+// GetIps returns a snapshot of the DNS names and IPs in DNSPoller
+func (poller *DNSPoller) GetIPs() map[string][]net.IP {
+	poller.Lock()
+	defer poller.Unlock()
+
+	ips := make(map[string][]net.IP, len(poller.IPs))
+
+	for name, ip := range poller.IPs {
+		ips[name] = append(ips[name], ip...)
+	}
+
+	return ips
+}
+
 // UpdateDNSIPs updates the IPs for each DNS name in updatedDNSIPs.
 // It returns:
 // affectedRules: a list of rule UUIDs that were affected by the new IPs (lookup in .allRules)
