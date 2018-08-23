@@ -53,6 +53,37 @@ func (a *Client) DeletePolicy(params *DeletePolicyParams) (*DeletePolicyOK, erro
 }
 
 /*
+GetDiscoveryFqdn retrieves a list of IP DNS name mappings discovered via to f q d ns rules
+
+Retrieves a list of IP -> DNS Name mappings matching the provided parameters, or all mappings if no parameters are provided.
+
+*/
+func (a *Client) GetDiscoveryFqdn(params *GetDiscoveryFqdnParams) (*GetDiscoveryFqdnOK, error) {
+	// TODO: Validate the params before sending
+	if params == nil {
+		params = NewGetDiscoveryFqdnParams()
+	}
+
+	result, err := a.transport.Submit(&runtime.ClientOperation{
+		ID:                 "GetDiscoveryFqdn",
+		Method:             "GET",
+		PathPattern:        "/discovery/fqdn",
+		ProducesMediaTypes: []string{"application/json"},
+		ConsumesMediaTypes: []string{"application/json"},
+		Schemes:            []string{"http"},
+		Params:             params,
+		Reader:             &GetDiscoveryFqdnReader{formats: a.formats},
+		Context:            params.Context,
+		Client:             params.HTTPClient,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result.(*GetDiscoveryFqdnOK), nil
+
+}
+
+/*
 GetIdentity retrieves a list of identities that have metadata matching the provided parameters
 
 Retrieves a list of identities that have metadata matching the provided parameters, or all identities if no parameters are provided.
