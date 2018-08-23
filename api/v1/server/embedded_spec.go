@@ -103,6 +103,43 @@ func init() {
         }
       }
     },
+    "/discovery/fqdn": {
+      "get": {
+        "description": "Retrieves a list of IP -\u003e DNS Name mappings matching the provided parameters, or all mappings if no parameters are provided.\n",
+        "tags": [
+          "policy"
+        ],
+        "summary": "Retrieves a list of IP -\u003e DNS Name mappings discovered via ToFQDNs rules",
+        "parameters": [
+          {
+            "$ref": "#/parameters/matchname"
+          },
+          {
+            "$ref": "#/parameters/cidr"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/DNSLookup"
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request (error parsing parameters)",
+            "schema": {
+              "$ref": "#/definitions/Error"
+            }
+          },
+          "404": {
+            "description": "No DNS data with provided parameters found"
+          }
+        }
+      }
+    },
     "/endpoint": {
       "get": {
         "description": "Retrieves a list of endpoints that have metadata matching the provided parameters, or all endpoints if no parameters provided.\n",
@@ -1225,6 +1262,33 @@ func init() {
         "$ref": "#/definitions/ControllerStatus"
       }
     },
+    "DNSLookup": {
+      "description": "An IP -\u003e DNS mapping, with metadata",
+      "type": "object",
+      "properties": {
+        "address": {
+          "description": "An IP",
+          "type": "string"
+        },
+        "fqdn": {
+          "description": "DNS name",
+          "type": "string"
+        },
+        "lookup-source": {
+          "description": "The endpoint that made this lookup, or 0 for the agent itself.",
+          "type": "integer"
+        },
+        "lookup-time": {
+          "description": "The absolute time when this data was recieved",
+          "type": "string",
+          "format": "date-time"
+        },
+        "ttl": {
+          "description": "The TTL in the DNS response",
+          "type": "integer"
+        }
+      }
+    },
     "DaemonConfiguration": {
       "description": "Response to a daemon configuration request.\n",
       "type": "object",
@@ -2331,6 +2395,12 @@ func init() {
     }
   },
   "parameters": {
+    "cidr": {
+      "type": "string",
+      "description": "A CIDR range of IPs",
+      "name": "cidr",
+      "in": "query"
+    },
     "endpoint-change-request": {
       "name": "endpoint",
       "in": "body",
@@ -2384,6 +2454,12 @@ func init() {
       "name": "name",
       "in": "path",
       "required": true
+    },
+    "matchname": {
+      "type": "string",
+      "description": "A toFQDNs compatible matchName expression",
+      "name": "matchname",
+      "in": "query"
     },
     "pod-name": {
       "type": "string",
