@@ -1025,6 +1025,9 @@ func runDaemon() {
 	// metrics
 	api.MetricsGetMetricsHandler = NewGetMetricsHandler(d)
 
+	// /discovery/fqdn
+	api.PolicyGetDiscoveryFqdnHandler = NewGetDiscoveryFqdnHandler(d)
+
 	server := server.NewServer(api)
 	server.EnabledListeners = []string{"unix"}
 	server.SocketPath = flags.Filename(socketPath)

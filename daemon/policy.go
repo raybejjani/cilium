@@ -18,6 +18,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"net"
+	"regexp"
 	"sync"
 
 	"github.com/cilium/cilium/api/v1/models"
@@ -36,6 +38,7 @@ import (
 	policyAPI "github.com/cilium/cilium/pkg/policy/api"
 
 	"github.com/go-openapi/runtime/middleware"
+	"github.com/go-openapi/strfmt"
 	"github.com/op/go-logging"
 )
 
@@ -410,4 +413,60 @@ func (h *getPolicy) Handle(params GetPolicyParams) middleware.Responder {
 		Policy:   policy.JSONMarshalRules(ruleList),
 	}
 	return NewGetPolicyOK().WithPayload(policy)
+}
+
+type getDiscoveryFqdn struct {
+	daemon *Daemon
+}
+
+func NewGetDiscoveryFqdnHandler(d *Daemon) GetDiscoveryFqdnHandler {
+	return &getDiscoveryFqdn{daemon: d}
+}
+
+func (h *getDiscoveryFqdn) Handle(params GetDiscoveryFqdnParams) middleware.Responder {
+	d := h.daemon
+
+	cidrMatcher := func(ip net.IP) bool { return true }
+	nameMatcher := func(name string) bool { return true }
+
+	if params.Cidr != nil {
+		_, cidr, err := net.ParseCIDR(*params.Cidr)
+		if err != nil {
+			return api.Error(GetDiscoveryFqdnBadRequestCode, err)
+		}
+		cidrMatcher = func(ip net.IP) bool { return cidr.Contains(ip) }
+	}
+
+	if params.Matchname != nil {
+		matcher, err := regexp.Compile(*params.Matchname)
+		if err != nil {
+			return api.Error(GetDiscoveryFqdnBadRequestCode, err)
+		}
+		nameMatcher = func(name string) bool { return matcher.MatchString(name) }
+	}
+
+	lookups := make([]*models.DNSLookup, 0)
+perName:
+	for name, ips := range d.dnsPoller.GetIPs() {
+		if !nameMatcher(name) {
+			continue perName
+		}
+
+	perIP:
+		for _, ip := range ips {
+			if !cidrMatcher(ip) {
+				continue perIP
+			}
+
+			lookups = append(lookups, &models.DNSLookup{
+				Address:      ip.String(),
+				Fqdn:         name,
+				LookupSource: 0,
+				LookupTime:   strfmt.NewDateTime(),
+				TTL:          0,
+			})
+		}
+	}
+
+	return NewGetDiscoveryFqdnOK().WithPayload(lookups)
 }
