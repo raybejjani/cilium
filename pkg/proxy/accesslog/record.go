@@ -95,6 +95,8 @@ type EndpointInfo struct {
 	// LabelsSHA256 is the hex encoded SHA-256 signature over the Labels
 	// slice, 64 characters in length
 	LabelsSHA256 string
+
+	DNSName []string
 }
 
 // ServiceInfo contains information about the Kubernetes service
