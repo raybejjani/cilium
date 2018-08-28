@@ -397,7 +397,8 @@ func (poller *DNSPoller) addRule(uuid string, sourceRule *api.Rule) (newDNSNames
 		}
 	}
 
-	// Always add to allRules
+	// Always add to allRules, and clean ToCIDRSet
+	stripToCIDRSet(sourceRule)
 	poller.allRules[uuid] = sourceRule
 
 	// Add a dnsname -> rule reference
