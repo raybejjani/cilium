@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/cilium/cilium/pkg/controller"
+	"github.com/cilium/cilium/pkg/fqdn/cache"
 	"github.com/cilium/cilium/pkg/lock"
 	"github.com/cilium/cilium/pkg/logging/logfields"
 	"github.com/cilium/cilium/pkg/policy/api"
@@ -100,20 +101,28 @@ type DNSPoller struct {
 	// allRules is the global source of truth for rules we are managing. It maps
 	// UUID to the rule copy.
 	allRules map[string]*api.Rule
+
+	cache *cache.DNSCache
 }
 
 // DNSPollerConfig is a simple configuration structure to set how DNSPoller
 // does DNS lookups and emits generated policy rules via the AddGeneratedRules
 // callback.
+// When Cache is nil, fqdn/cache.DefaultDNSCache is used.
 // When LookupDNSNames is nil, fqdn.DNSLookupDefaultResolver is used.
 // When AddGeneratedRules is nil, it is a no-op
 type DNSPollerConfig struct {
+	Cache             *cache.DNSCache
 	LookupDNSNames    func(dnsNames []string) (DNSIPs map[string][]net.IP, errorDNSNames map[string]error)
 	AddGeneratedRules func([]*api.Rule) error
 }
 
 // NewDNSPoller creates an initialized DNSPoller. It does not start the controller (use .Start)
 func NewDNSPoller(config DNSPollerConfig) *DNSPoller {
+	if config.Cache == nil {
+		config.Cache = cache.DefaultDNSCache
+	}
+
 	if config.LookupDNSNames == nil {
 		config.LookupDNSNames = DNSLookupDefaultResolver
 	}
@@ -127,6 +136,7 @@ func NewDNSPoller(config DNSPollerConfig) *DNSPoller {
 		IPs:         make(map[string][]net.IP),
 		sourceRules: make(map[string]map[string]struct{}),
 		allRules:    make(map[string]*api.Rule),
+		cache:       config.Cache,
 	}
 }
 
@@ -509,9 +519,15 @@ func (poller *DNSPoller) ensureExists(dnsName string) (exists bool) {
 func (poller *DNSPoller) updateIPsForName(dnsName string, newIPs []net.IP) (updated bool) {
 	oldIPs := poller.IPs[dnsName]
 
+	ttl := 2 * int(DNSPollerInterval/time.Second) // FIXME: Figure out what this should be. Add noTTL flag to DNSCacheEntry?
+	dnsCacheResponse := cache.CreateDNSIPResponse(dnsName, newIPs, ttl)
+	poller.cache.Update(dnsName, dnsCacheResponse)
+
+	fullNewIPs, _ := poller.cache.LookupName(dnsName)
+
 	// store the new IPs, sorted (to help with the updated determination below)
-	sortedNewIPs := make([]net.IP, len(newIPs)) // copy uses len(dst) not cap!
-	copy(sortedNewIPs, newIPs)
+	sortedNewIPs := make([]net.IP, len(fullNewIPs)) // copy uses len(dst) not cap!
+	copy(sortedNewIPs, fullNewIPs)
 	sort.Slice(sortedNewIPs, func(i, j int) bool {
 		return bytes.Compare(sortedNewIPs[i], sortedNewIPs[j]) == -1
 	})
@@ -523,8 +539,8 @@ func (poller *DNSPoller) updateIPsForName(dnsName string, newIPs []net.IP) (upda
 	}
 
 	// lengths are equal, so each member in one set must be in the other
-	// Note: we sorted newIPs above, and sorted oldIPs when they were inserted in
-	// this function, previously.
+	// Note: we sorted fullNewIPs above, and sorted oldIPs when they were
+	// inserted in this function, previously.
 	// If any IPs at the same index differ, updated = true.
 	for idx := range poller.IPs[dnsName] {
 		if !poller.IPs[dnsName][idx].Equal(oldIPs[idx]) {

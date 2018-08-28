@@ -33,7 +33,7 @@ type DNSCacheEntry struct {
 	Scope          string // what did the lookup? endpointID, agent, ?
 	LookupTime     time.Time
 	ExpirationTime time.Time
-	DNSResponse    *layers.DNS
+	DNSResponse    *layers.DNS // FIXME: use layers.DNSResourceRecord? allows mixing IP4/6
 }
 
 type DNSCache struct {
