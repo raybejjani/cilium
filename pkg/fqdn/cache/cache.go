@@ -128,6 +128,47 @@ func (c *DNSCache) LookupName(name string) (ips []net.IP, entries []*DNSCacheEnt
 
 }
 
+func (c *DNSCache) GetNames() (names []string) {
+	c.RLock()
+	defer c.RUnlock()
+
+perName:
+	for name, cacheEntries := range c.forward {
+		for _, entry := range cacheEntries {
+			if !c.cacheFilter(entry) {
+				continue perName
+			}
+			names = append(names, name)
+		}
+	}
+	return names
+}
+
+func (c *DNSCache) GetIPs() (ips map[string][]net.IP) {
+	c.RLock()
+	defer c.RUnlock()
+
+	ips = make(map[string][]net.IP, len(c.forward))
+	for name, cacheEntries := range c.forward {
+		ipSet := map[string]net.IP{}
+		for _, entry := range cacheEntries {
+			if !c.cacheFilter(entry) {
+				continue
+			}
+			for i := range entry.DNSResponse.Answers {
+				rr := &entry.DNSResponse.Answers[i]
+				ipSet[rr.IP.String()] = rr.IP
+			}
+		}
+
+		for _, ip := range ipSet {
+			ips[name] = append(ips[name], ip)
+		}
+	}
+
+	return ips
+}
+
 func (c *DNSCache) updateForward(entry *DNSCacheEntry) (replaced bool) {
 	// find the response set by name
 	// find the entry by uuid as replaced
@@ -184,4 +225,31 @@ func getExpirationTime(response *layers.DNS, now time.Time) (expire time.Time) {
 	}
 
 	return expire
+}
+
+// FIXME ACCOUNT FOR IPv6
+func CreateDNSIPResponse(name string, ips []net.IP, TTL int) (response *layers.DNS) {
+	response = &layers.DNS{
+		QR:           true,
+		OpCode:       layers.DNSOpCodeQuery,
+		ResponseCode: layers.DNSResponseCodeNoErr,
+		QDCount:      1,
+		Questions: []layers.DNSQuestion{{
+			Name:  []byte(name),
+			Type:  layers.DNSTypeA,
+			Class: layers.DNSClassIN,
+		}},
+		ANCount: uint16(len(ips)),
+	}
+	for _, ip := range ips {
+		response.Answers = append(response.Answers,
+			layers.DNSResourceRecord{
+				Name:  []byte(name),
+				Type:  layers.DNSTypeA,
+				Class: layers.DNSClassIN,
+				IP:    ip,
+			})
+	}
+
+	return response
 }
