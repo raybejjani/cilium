@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/cilium/cilium/pkg/lock"
+	"github.com/google/gopacket/layers"
 )
 
 // DefaultDNSCache is a global, shared, DNS cache. It is the default cache used
@@ -94,12 +95,16 @@ type DNSCache struct {
 	// forward DNS lookups name -> IPEntries
 	// IPEntries maps IP -> entry that provides it. An entry may provide multiple IPs.
 	forward map[string]ipEntries
+
+	// IP-> dnsNames lookup
+	reverse map[string]map[string]*cacheEntry
 }
 
 // NewDNSCache returns an initialized DNSCache
 func NewDNSCache() *DNSCache {
 	c := &DNSCache{
 		forward: make(map[string]ipEntries),
+		reverse: make(map[string]map[string]*cacheEntry),
 	}
 
 	return c
@@ -135,6 +140,7 @@ func (c *DNSCache) Update(lookupTime time.Time, name string, ips []net.IP, ttl i
 	// When lookupTime is much earlier than time.Now(), we may not expire all
 	// entries that should be expired, leaving more work for .Lookup.
 	c.removeExpired(entries, time.Now())
+	c.removeExpired(c.reverse[name], time.Now())
 }
 
 // Lookup returns a set of unique IPs that are currently unexpired for name, if
@@ -168,6 +174,8 @@ func (c *DNSCache) updateWithEntryIPs(entries ipEntries, entry *cacheEntry) {
 		old, exists := entries[ipStr]
 		if old == nil || !exists || old.isExpiredBy(entry.ExpirationTime) {
 			entries[ipStr] = entry
+
+			c.upsertReverse(ipStr, entry)
 		}
 	}
 }
@@ -179,6 +187,8 @@ func (c *DNSCache) removeExpired(entries ipEntries, now time.Time) {
 	for ip, entry := range entries {
 		if entry == nil || entry.isExpiredBy(now) {
 			delete(entries, ip)
+
+			c.removeReverse(ip, entry)
 		}
 	}
 }
@@ -209,4 +219,107 @@ func keepUniqueIPs(ips []net.IP) []net.IP {
 	}
 
 	return returnIPs
+}
+
+// DNS Demo code
+// FIXME ACCOUNT FOR IPv6
+func CreateDNSIPResponse(name string, ips []net.IP, TTL int) (response *layers.DNS) {
+	response = &layers.DNS{
+		QR:           true,
+		OpCode:       layers.DNSOpCodeQuery,
+		ResponseCode: layers.DNSResponseCodeNoErr,
+		QDCount:      1,
+		Questions: []layers.DNSQuestion{{
+			Name:  []byte(name),
+			Type:  layers.DNSTypeA,
+			Class: layers.DNSClassIN,
+		}},
+		ANCount: uint16(len(ips)),
+	}
+	for _, ip := range ips {
+		response.Answers = append(response.Answers,
+			layers.DNSResourceRecord{
+				Name:  []byte(name),
+				Type:  layers.DNSTypeA,
+				Class: layers.DNSClassIN,
+				IP:    ip,
+			})
+	}
+
+	return response
+}
+
+func (c *DNSCache) GetNames() (names []string) {
+	c.RLock()
+	defer c.RUnlock()
+
+	now := time.Now()
+	for name := range c.forward {
+		if len(c.lookupByTime(now, name)) > 0 {
+			names = append(names, name)
+		}
+	}
+	return names
+}
+
+func (c *DNSCache) GetIPs() (ips map[string][]net.IP) {
+	ips = make(map[string][]net.IP, len(c.forward))
+
+	c.RLock()
+	defer c.RUnlock()
+
+	now := time.Now()
+	for name := range c.forward {
+		lookupIPs := c.lookupByTime(now, name)
+		if len(lookupIPs) > 0 {
+			ips[name] = lookupIPs
+		}
+	}
+
+	return ips
+}
+
+func (c *DNSCache) LookupIP(ip net.IP) (names []string) {
+	// find ip entry in reverse
+	// return name & entries that are not expired
+
+	ipKey := ip.String()
+
+	c.RLock()
+	defer c.RUnlock()
+
+	now := time.Now()
+	cacheEntries, found := c.reverse[ipKey]
+	if !found {
+		return nil
+	}
+
+	for name, entry := range cacheEntries {
+		if entry != nil && !entry.isExpiredBy(now) {
+			names = append(names, name)
+		}
+	}
+
+	sort.Strings(names)
+	return names
+}
+
+func (c *DNSCache) upsertReverse(ip string, entry *cacheEntry) {
+	entries, exists := c.reverse[ip]
+	if entries == nil || !exists {
+		entries = make(map[string]*cacheEntry)
+		c.reverse[ip] = entries
+	}
+	entries[entry.Name] = entry
+}
+
+func (c *DNSCache) removeReverse(ip string, entry *cacheEntry) {
+	entries, exists := c.reverse[ip]
+	if entries == nil || !exists {
+		return
+	}
+	delete(entries, entry.Name)
+	if len(entries) == 0 {
+		delete(c.reverse, ip)
+	}
 }
