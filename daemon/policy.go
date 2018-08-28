@@ -480,9 +480,10 @@ func (h *getDiscoveryFqdn) Handle(params GetDiscoveryFqdnParams) middleware.Resp
 		nameMatcher = func(name string) bool { return matcher.MatchString(name) }
 	}
 
+	// FIXME: Implement GetEntries to get lookuptime & TTL
 	lookups := make([]*models.DNSLookup, 0)
 perName:
-	for name, ips := range d.dnsPoller.GetIPs() {
+	for name, ips := range d.dnsCache.GetIPs() { // FIXME: make cache a param on daemon
 		if !nameMatcher(name) {
 			continue perName
 		}

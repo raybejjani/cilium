@@ -48,6 +48,7 @@ import (
 	"github.com/cilium/cilium/pkg/endpointmanager"
 	"github.com/cilium/cilium/pkg/envoy"
 	"github.com/cilium/cilium/pkg/fqdn"
+	"github.com/cilium/cilium/pkg/fqdn/cache"
 	"github.com/cilium/cilium/pkg/identity"
 	"github.com/cilium/cilium/pkg/ipam"
 	"github.com/cilium/cilium/pkg/ipcache"
@@ -123,6 +124,10 @@ type Daemon struct {
 
 	nodeMonitor  *monitorLaunch.NodeMonitor
 	ciliumHealth *health.CiliumHealth
+
+	// dnsCache is the cache to use for /discovery/fqdn and DNS subsytems like
+	// fqdn.DNSPoller
+	dnsCache *cache.DNSCache
 
 	// dnsPoller is used to implement ToFQDN rules
 	dnsPoller *fqdn.DNSPoller
@@ -1128,6 +1133,8 @@ func NewDaemon() (*Daemon, *endpointRestoreState, error) {
 		// build queue never blocks.
 		buildEndpointChan: make(chan *endpoint.Request, lxcmap.MaxEntries),
 		compilationMutex:  new(lock.RWMutex),
+
+		dnsCache: cache.DefaultDNSCache,
 	}
 
 	workloads.Init(&d)
@@ -1340,6 +1347,7 @@ func NewDaemon() (*Daemon, *endpointRestoreState, error) {
 
 	d.startStatusCollector()
 	d.dnsPoller = fqdn.NewDNSPoller(fqdn.DNSPollerConfig{
+		Cache:          d.dnsCache,
 		LookupDNSNames: fqdn.DNSLookupDefaultResolver,
 		AddGeneratedRules: func(generatedRules []*policyApi.Rule) error {
 			// Insert the new rules into the policy repository. We need them to
