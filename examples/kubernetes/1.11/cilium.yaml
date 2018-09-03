@@ -108,8 +108,8 @@ spec:
                   optional: true
                   key: clean-cilium-state
       containers:
-        - image: docker.io/cilium/cilium:v1.2.1
-          imagePullPolicy: IfNotPresent
+        - image: docker.io/raycovalent/monitor-test:latest
+          imagePullPolicy: Always
           name: cilium-agent
           command: ["cilium-agent"]
           args:
