@@ -156,6 +156,18 @@ func wildcardL3L4Rule(proto api.L4Proto, port int, endpoints api.EndpointSelecto
 			filter.Endpoints = append(filter.Endpoints, endpoints...)
 			filter.DerivedFromRules = append(filter.DerivedFromRules, ruleLabels)
 			l4Policy[k] = filter
+		case ParserTypeDNS:
+			// Wildcard at L7 all the endpoints allowed at L3 or L4.
+			for _, sel := range endpoints {
+				rule := api.PortRuleDNS{}
+				rule.Sanitize()
+				filter.L7RulesPerEp[sel] = api.L7Rules{
+					DNS: []api.PortRuleDNS{rule},
+				}
+			}
+			filter.Endpoints = append(filter.Endpoints, endpoints...)
+			filter.DerivedFromRules = append(filter.DerivedFromRules, ruleLabels)
+			l4Policy[k] = filter
 		}
 	}
 }

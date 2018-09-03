@@ -246,6 +246,8 @@ func (kr *PortRuleKafka) Sanitize() error {
 }
 
 func (pr *L7Rules) sanitize() error {
+	// sanitize DNS here
+
 	if (pr.HTTP != nil) && (pr.Kafka != nil) {
 		return fmt.Errorf("multiple L7 protocol rule types specified in single rule")
 	}
@@ -276,9 +278,10 @@ func (pr *PortRule) sanitize() error {
 		if err := pr.Ports[i].sanitize(); err != nil {
 			return err
 		}
-		if !pr.Rules.IsEmpty() && pr.Ports[i].Protocol != ProtoTCP {
-			return fmt.Errorf("L7 rules can only apply exclusively to TCP, not %s", pr.Ports[i].Protocol)
-		}
+		// FIXME This needs to do the right thing for !DNS
+		//if !pr.Rules.IsEmpty() && pr.Ports[i].Protocol != ProtoTCP {
+		//	return fmt.Errorf("L7 rules can only apply exclusively to TCP, not %s", pr.Ports[i].Protocol)
+		//}
 	}
 
 	// Sanitize L7 rules

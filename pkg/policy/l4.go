@@ -78,6 +78,8 @@ const (
 	ParserTypeHTTP L7ParserType = "http"
 	// ParserTypeKafka specifies a Kafka parser type
 	ParserTypeKafka L7ParserType = "kafka"
+	// ParserTypeDNS specifies a DNS parser type
+	ParserTypeDNS L7ParserType = "dns"
 )
 
 type L4Filter struct {
@@ -117,6 +119,7 @@ func (l7 L7DataMap) GetRelevantRules(identity *identity.Identity) api.L7Rules {
 			if selector.Matches(identity.Labels.LabelArray()) {
 				rules.HTTP = append(rules.HTTP, endpointRules.HTTP...)
 				rules.Kafka = append(rules.Kafka, endpointRules.Kafka...)
+				rules.DNS = append(rules.DNS, endpointRules.DNS...)
 			}
 		}
 	}
@@ -125,6 +128,7 @@ func (l7 L7DataMap) GetRelevantRules(identity *identity.Identity) api.L7Rules {
 	if r, ok := l7[api.WildcardEndpointSelector]; ok {
 		rules.HTTP = append(rules.HTTP, r.HTTP...)
 		rules.Kafka = append(rules.Kafka, r.Kafka...)
+		rules.DNS = append(rules.DNS, r.DNS...)
 	}
 
 	return rules
@@ -179,6 +183,12 @@ func CreateL4Filter(peerEndpoints api.EndpointSelectorSlice, rule api.PortRule, 
 		case len(rule.Rules.Kafka) > 0:
 			l4.L7Parser = ParserTypeKafka
 		}
+		l4.L7RulesPerEp.addRulesForEndpoints(*rule.Rules, filterEndpoints)
+	}
+
+	// we need this to redirect DNS UDP (or ANY, which is more useful)
+	if !rule.Rules.IsEmpty() && len(rule.Rules.DNS) > 0 {
+		l4.L7Parser = ParserTypeDNS
 		l4.L7RulesPerEp.addRulesForEndpoints(*rule.Rules, filterEndpoints)
 	}
 

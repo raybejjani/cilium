@@ -64,6 +64,22 @@ func (k *PortRuleKafka) Equal(o PortRuleKafka) bool {
 		k.Topic == o.Topic && k.ClientID == o.ClientID && k.Role == o.Role
 }
 
+// Exists returns true if the DNS rule already exists in the list of rules
+func (d *PortRuleDNS) Exists(rules L7Rules) bool {
+	for _, existingRule := range rules.DNS {
+		if d.Equal(existingRule) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// Equal returns true if both rules are equal
+func (d *PortRuleDNS) Equal(o PortRuleDNS) bool {
+	return d != nil && d.MatchName == o.MatchName
+}
+
 // Validate returns an error if the layer 4 protocol is not valid
 func (l4 L4Proto) Validate() error {
 	switch l4 {
