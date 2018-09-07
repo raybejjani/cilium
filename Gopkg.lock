@@ -563,6 +563,12 @@
   version = "v1.0.0"
 
 [[projects]]
+  name = "github.com/miekg/dns"
+  packages = ["."]
+  revision = "5a2b9fab83ff0f8bfc99684bd5f43a37abe560f1"
+  version = "v1.0.8"
+
+[[projects]]
   name = "github.com/mitchellh/hashstructure"
   packages = ["."]
   revision = "2bca23e0e452137f789efbc8610126fd8b94f73b"
@@ -1221,6 +1227,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "787623a4e3f906505165763a3c5382f340edc43fe2038c8a7691a80b32e32cf6"
+  inputs-digest = "861b0865cc8ae23568a36284d11a82886180194e8249ccc483e0577ce5557f31"
   solver-name = "gps-cdcl"
   solver-version = 1
