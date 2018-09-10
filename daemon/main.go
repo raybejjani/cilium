@@ -53,6 +53,7 @@ import (
 	"github.com/cilium/cilium/pkg/pidfile"
 	"github.com/cilium/cilium/pkg/policy"
 	"github.com/cilium/cilium/pkg/pprof"
+	"github.com/cilium/cilium/pkg/proxy"
 	"github.com/cilium/cilium/pkg/service"
 	"github.com/cilium/cilium/pkg/version"
 	"github.com/cilium/cilium/pkg/workloads"
@@ -484,6 +485,8 @@ func init() {
 
 	flags.BoolVar(&useDNSListener,
 		"use-dns-listener", false, "Enable DNS response sniffing in cilium-agent using cilium-monitor")
+	flags.IntVar(&proxy.ProxyPort,
+		"fqdn-proxy-port", 8053, "Global port on which the in-agent DNS proxy should listen")
 
 	flags.StringVar(&cmdRefDir,
 		"cmdref", "", "Path to cmdref output directory")

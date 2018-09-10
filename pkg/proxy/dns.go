@@ -16,9 +16,12 @@ package proxy
 
 import (
 	"github.com/cilium/cilium/pkg/completion"
+	"github.com/cilium/cilium/pkg/fqdn/dnsproxy"
 	"github.com/cilium/cilium/pkg/policy"
 	"github.com/cilium/cilium/pkg/proxy/logger"
 )
+
+var ProxyPort int
 
 // dnsRedirect implements the Redirect interface for an l7 proxy
 type dnsRedirect struct {
@@ -32,25 +35,52 @@ type dnsConfiguration struct {
 }
 
 // UpdateRules replaces old l7 rules of a redirect with new ones.
-func (k *dnsRedirect) UpdateRules(wg *completion.WaitGroup) error {
+func (r *dnsRedirect) UpdateRules(wg *completion.WaitGroup) error {
 	log.Info("UpdateRules")
+
+	for _, r := range r.rules {
+		for _, dnsRule := range r.DNS {
+			dnsproxy.AddAllowed(dnsRule.MatchName)
+		}
+	}
+
 	return nil
 }
 
 // Close the redirect.
-func (k *dnsRedirect) Close(wg *completion.WaitGroup) {
+func (r *dnsRedirect) Close(wg *completion.WaitGroup) {
 	log.Info("Close")
+
+	for _, r := range r.rules {
+		for _, dnsRule := range r.DNS {
+			dnsproxy.RemoveAllowed(dnsRule.MatchName)
+		}
+	}
 }
 
 // creatednsRedirect creates a redirect to the dns proxy. The redirect structure passed
 // in is safe to access for reading and writing.
 func createDNSRedirect(r *Redirect, conf dnsConfiguration, endpointInfoRegistry logger.EndpointInfoRegistry) (RedirectImplementation, error) {
+	if err := dnsproxy.StartDNSProxy(uint16(ProxyPort)); err != nil {
+		return nil, err
+	}
+
 	redir := &dnsRedirect{
 		redirect:             r,
 		conf:                 conf,
 		endpointInfoRegistry: endpointInfoRegistry,
 	}
-	log.Infof("createDNSRedirect %v", redir)
+	log.Infof("DNS createDNSRedirect redir %+v", redir)
+	log.Infof("DNS createDNSRedirect r %+v", r)
+	log.Infof("DNS createDNSRedirect endpointInfoRegistry %+v", r)
+	// FIXME: this is bad. The port was given to us in r but it's unclear who will release it, and if this global port will be released when any DNS rules is removed.
+	r.ProxyPort = uint16(ProxyPort)
+
+	for _, r := range r.rules {
+		for _, dnsRule := range r.DNS {
+			dnsproxy.AddAllowed(dnsRule.MatchName)
+		}
+	}
 
 	return redir, nil
 }
