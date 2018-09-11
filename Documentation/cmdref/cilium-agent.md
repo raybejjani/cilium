@@ -79,6 +79,7 @@ cilium-agent
       --state-dir string                            Directory path to store runtime state (default "/var/run/cilium")
       --trace-payloadlen int                        Length of payload to capture when tracing (default 128)
   -t, --tunnel string                               Tunnel mode {vxlan, geneve, disabled} (default "vxlan")
+      --use-dns-listener                            Enable DNS response sniffing in cilium-agent using cilium-monitor (default true)
       --version                                     Print version information
 ```
 

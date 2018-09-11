@@ -119,6 +119,7 @@ var (
 	v6Prefix              string
 	v6ServicePrefix       string
 	validLabels           []string
+	useDNSListener        bool
 )
 
 var (
@@ -481,6 +482,9 @@ func init() {
 	viper.BindEnv("prometheus-serve-addr", "CILIUM_PROMETHEUS_SERVE_ADDR")
 	viper.BindEnv("prometheus-serve-addr-deprecated", "PROMETHEUS_SERVE_ADDR")
 
+	flags.BoolVar(&useDNSListener,
+		"use-dns-listener", true, "Enable DNS response sniffing in cilium-agent using cilium-monitor")
+
 	flags.StringVar(&cmdRefDir,
 		"cmdref", "", "Path to cmdref output directory")
 	flags.MarkHidden("cmdref")
@@ -819,16 +823,18 @@ func runDaemon() {
 
 	log.Info("Launching node monitor daemon")
 	go d.nodeMonitor.Run(path.Join(defaults.RuntimePath, defaults.EventsPipe), bpf.GetMapRoot())
-	go func() {
-		for {
-			time.Sleep(1 * time.Second)
-			if err := dnslistener.StartDNSListener(); err != nil {
-				log.WithError(err).Error("Cannot start DNS monitor listener")
+	if useDNSListener {
+		go func() {
+			for {
+				time.Sleep(1 * time.Second)
+				if err := dnslistener.StartDNSListener(); err != nil {
+					log.WithError(err).Error("Cannot start DNS monitor listener")
+				}
+				log.Info("DNS monitor listener started")
+				break
 			}
-			log.Info("DNS monitor listener started")
-			break
-		}
-	}()
+		}()
+	}
 
 	if err := d.EnableK8sWatcher(5 * time.Minute); err != nil {
 		log.WithError(err).Fatal("Unable to establish connection to Kubernetes apiserver")
