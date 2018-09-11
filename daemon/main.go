@@ -483,7 +483,7 @@ func init() {
 	viper.BindEnv("prometheus-serve-addr-deprecated", "PROMETHEUS_SERVE_ADDR")
 
 	flags.BoolVar(&useDNSListener,
-		"use-dns-listener", true, "Enable DNS response sniffing in cilium-agent using cilium-monitor")
+		"use-dns-listener", false, "Enable DNS response sniffing in cilium-agent using cilium-monitor")
 
 	flags.StringVar(&cmdRefDir,
 		"cmdref", "", "Path to cmdref output directory")
