@@ -130,9 +130,9 @@ docker-image: clean GIT_VERSION envoy/SOURCE_VERSION
 	grep -v -E "(SOURCE|GIT)_VERSION" .gitignore >.dockerignore
 	echo ".*" >>.dockerignore # .git pruned out
 	echo "Documentation" >>.dockerignore # Not needed
-	docker build --build-arg LOCKDEBUG=${LOCKDEBUG} -t "raycovalent/monitor-test" .
+	docker build --build-arg LOCKDEBUG=${LOCKDEBUG} -t "raycovalent/monitor-test:l7proxy" .
 	@echo "Push like this when ready:"
-	@echo "docker push docker.io/raycovalent/monitor-test"
+	@echo "docker push docker.io/raycovalent/monitor-test:l7proxy"
 
 docker-image-runtime:
 	cd contrib/packaging/docker && docker build -t "cilium/cilium-runtime:$(UTC_DATE)" -f Dockerfile.runtime .
