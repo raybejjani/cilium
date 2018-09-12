@@ -36,6 +36,8 @@ var (
 	allowed      = regexp.MustCompile("^")
 	allowedNames = map[string]struct{}{}
 	allowedLock  lock.Mutex
+
+	DNSPoller *fqdn.DNSPoller
 )
 
 // StartDNSProxy starts the proxy used in DNS L7 redirects. Repeat calls are
@@ -131,6 +133,13 @@ func handleQuery(w dns.ResponseWriter, r *dns.Msg) {
 
 		log.Infof("DNS Proxy: Updating %s in cache from response to to query from %s", qname, w.RemoteAddr())
 		fqdn.DefaultDNSCache.Update(now, respName, response.IPs, response.TTL)
+
+		// This is racey, and should be fixed
+		if DNSPoller != nil {
+			DNSPoller.UpdateGenerateDNS(now, map[string]*fqdn.DNSIPRecords{
+				respName: {TTL: response.TTL, IPs: response.IPs},
+			})
+		}
 	}
 
 	// This check is here, after the actual lookup, to allow populating the cache

@@ -277,7 +277,12 @@ func (poller *DNSPoller) LookupUpdateDNS() error {
 		log.WithError(err).WithField("matchName", dnsName).
 			Warn("Cannot resolve FQDN. Traffic egressing to this destination may be incorrectly dropped due to stale data.")
 	}
+	return poller.UpdateGenerateDNS(lookupTime, updatedDNSIPs)
+}
 
+// UpdateGenerateDNS inserts the new DNS information into the cache, and
+// regenerates rules that need to be regenerated.
+func (poller *DNSPoller) UpdateGenerateDNS(lookupTime time.Time, updatedDNSIPs map[string]*DNSIPRecords) error {
 	// Update IPs in poller
 	uuidsToUpdate, updatedDNSNames := poller.UpdateDNSIPs(lookupTime, updatedDNSIPs)
 	for dnsName, IPs := range updatedDNSNames {

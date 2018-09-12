@@ -32,7 +32,10 @@ import (
 	"github.com/google/gopacket/layers"
 )
 
-var Listener = DNSListener{cache: fqdn.DefaultDNSCache}
+var (
+	Listener  = DNSListener{cache: fqdn.DefaultDNSCache}
+	DNSPoller *fqdn.DNSPoller
+)
 
 type DNSListener struct {
 	cacheLock lock.Mutex
@@ -165,7 +168,15 @@ func (l *DNSListener) listenForDNSPackets(ctx context.Context, conn net.Conn) {
 			}
 			log.Infof("Inserting DNS Response %s -> %s into cache (query by %s)", packet.DNS.Answers[i].IP.String(), string(packet.DNS.Questions[0].Name), packet.IPv4.DstIP.String())
 		}
+		now := time.Now()
 		l.cache.Update(time.Now(), string(packet.DNS.Questions[0].Name), ips, ttl)
+
+		// This is racey, and should be fixed
+		if DNSPoller != nil {
+			DNSPoller.UpdateGenerateDNS(now, map[string]*fqdn.DNSIPRecords{
+				string(packet.DNS.Questions[0].Name): {TTL: ttl, IPs: ips},
+			})
+		}
 	}
 }
 

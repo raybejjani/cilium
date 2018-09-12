@@ -48,6 +48,8 @@ import (
 	"github.com/cilium/cilium/pkg/endpointmanager"
 	"github.com/cilium/cilium/pkg/envoy"
 	"github.com/cilium/cilium/pkg/fqdn"
+	"github.com/cilium/cilium/pkg/fqdn/dnslistener"
+	"github.com/cilium/cilium/pkg/fqdn/dnsproxy"
 	"github.com/cilium/cilium/pkg/identity"
 	"github.com/cilium/cilium/pkg/ipam"
 	"github.com/cilium/cilium/pkg/ipcache"
@@ -1360,6 +1362,8 @@ func NewDaemon() (*Daemon, *endpointRestoreState, error) {
 			return err
 		}})
 	fqdn.StartDNSPoller(d.dnsPoller)
+	dnsproxy.DNSPoller = d.dnsPoller    // This is recey and should be fixed
+	dnslistener.DNSPoller = d.dnsPoller // This is recey and should be fixed
 
 	return &d, restoredEndpoints, nil
 }
