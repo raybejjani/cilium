@@ -15,6 +15,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -25,6 +26,7 @@ import (
 	"github.com/cilium/cilium/pkg/kvstore"
 	"github.com/cilium/cilium/pkg/node"
 	"github.com/cilium/cilium/pkg/option"
+	"github.com/cilium/cilium/pkg/status"
 	"github.com/cilium/cilium/pkg/workloads"
 
 	"github.com/go-openapi/runtime/middleware"
@@ -83,23 +85,6 @@ func (d *Daemon) getNodeStatus() *models.ClusterStatus {
 		clusterStatus.Nodes = append(clusterStatus.Nodes, node.GetModel(ipv4))
 	}
 	return &clusterStatus
-}
-
-func (d *Daemon) collectStatus() {
-	for {
-		response := d.getStatus()
-
-		d.statusCollectMutex.Lock()
-		d.statusResponse = response
-		d.statusResponseTimestamp = time.Now()
-		d.statusCollectMutex.Unlock()
-
-		time.Sleep(collectStatusInterval)
-	}
-}
-
-func (d *Daemon) startStatusCollector() {
-	go d.collectStatus()
 }
 
 func (h *getHealthz) Handle(params GetHealthzParams) middleware.Responder {
@@ -171,4 +156,170 @@ func (d *Daemon) getStatus() models.StatusResponse {
 	}
 
 	return sr
+}
+
+func (d *Daemon) startStatusCollector() {
+	probes := []status.Probe{
+		{
+			Name: "check-locks",
+			Probe: func(ctx context.Context) (interface{}, error) {
+				// Try to acquire a couple of global locks to have the status API fail
+				// in case of a deadlock on these locks
+				option.Config.ConfigPatchMutex.Lock()
+				option.Config.ConfigPatchMutex.Unlock()
+				return nil, nil
+			},
+			Status: func(status status.Status) {
+				d.statusCollectMutex.Lock()
+				defer d.statusCollectMutex.Unlock()
+				// FIXME we have no field for the lock status
+			},
+		},
+		{
+			Name: "kvstore",
+			Probe: func(ctx context.Context) (interface{}, error) {
+				return kvstore.Client().Status()
+			},
+			Status: func(status status.Status) {
+				info := status.Data.(*models.Status)
+				d.statusCollectMutex.Lock()
+				defer d.statusCollectMutex.Unlock()
+
+				if status.Err != nil {
+					d.statusResponse.Kvstore = &models.Status{State: models.StatusStateFailure, Msg: fmt.Sprintf("Err: %s - %s", status.Err, info)}
+				} else {
+					d.statusResponse.Kvstore = info
+				}
+			},
+		},
+		{
+			Name: "container-runtime",
+			Probe: func(ctx context.Context) (interface{}, error) {
+				return workloads.Status(), nil
+			},
+			Status: func(status status.Status) {
+				d.statusCollectMutex.Lock()
+				defer d.statusCollectMutex.Unlock()
+
+				if status.Err != nil {
+					d.statusResponse.ContainerRuntime = &models.Status{State: models.StatusStateFailure, Msg: status.Err.Error()}
+				} else {
+					d.statusResponse.ContainerRuntime = status.Data.(*models.Status)
+				}
+			},
+		},
+		{
+			Name: "kubernetes",
+			Probe: func(ctx context.Context) (interface{}, error) {
+				return d.getK8sStatus(), nil
+			},
+			Status: func(status status.Status) {
+				d.statusCollectMutex.Lock()
+				defer d.statusCollectMutex.Unlock()
+
+				if status.Err != nil {
+					d.statusResponse.Kubernetes = &models.K8sStatus{State: models.StatusStateFailure, Msg: status.Err.Error()}
+				} else {
+					d.statusResponse.Kubernetes = status.Data.(*models.K8sStatus)
+				}
+			},
+		},
+		{
+			Name: "ipam",
+			Probe: func(ctx context.Context) (interface{}, error) {
+				return d.DumpIPAM(), nil
+			},
+			Status: func(status status.Status) {
+				d.statusCollectMutex.Lock()
+				defer d.statusCollectMutex.Unlock()
+
+				// IPAMStatus has no way to show errors
+				if status.Err == nil {
+					d.statusResponse.IPAM = status.Data.(*models.IPAMStatus)
+				}
+			},
+		},
+		{
+			Name: "node-monitor",
+			Probe: func(ctx context.Context) (interface{}, error) {
+				return d.nodeMonitor.State(), nil
+			},
+			Status: func(status status.Status) {
+				d.statusCollectMutex.Lock()
+				defer d.statusCollectMutex.Unlock()
+
+				// NodeMonitor has no way to show errors
+				if status.Err == nil {
+					d.statusResponse.NodeMonitor = status.Data.(*models.MonitorStatus)
+				}
+			},
+		},
+		{
+			Name: "cluster",
+			Probe: func(ctx context.Context) (interface{}, error) {
+				return d.getNodeStatus(), nil
+			},
+			Status: func(status status.Status) {
+				d.statusCollectMutex.Lock()
+				defer d.statusCollectMutex.Unlock()
+
+				// ClusterStatus has no way to report errors
+				if status.Err == nil {
+					d.statusResponse.Cluster = status.Data.(*models.ClusterStatus)
+				}
+			},
+		},
+		{
+			Name: "cilium-health",
+			Probe: func(ctx context.Context) (interface{}, error) {
+				if d.ciliumHealth == nil {
+					return nil, nil
+				}
+				return d.ciliumHealth.GetStatus(), nil
+			},
+			Status: func(status status.Status) {
+				if d.ciliumHealth == nil {
+					return
+				}
+
+				d.statusCollectMutex.Lock()
+				defer d.statusCollectMutex.Unlock()
+				if status.Err != nil {
+					d.statusResponse.Cluster.CiliumHealth = &models.Status{State: models.StatusStateFailure, Msg: status.Err.Error()}
+				} else {
+					d.statusResponse.Cluster.CiliumHealth = status.Data.(*models.Status)
+				}
+			},
+		},
+		{
+			Name: "l7-proxy",
+			Probe: func(ctx context.Context) (interface{}, error) {
+				if d.l7Proxy == nil {
+					return nil, nil
+				}
+				return d.l7Proxy.GetStatusModel(), nil
+			},
+			Status: func(status status.Status) {
+				if status.Data == nil {
+					return
+				}
+
+				d.statusCollectMutex.Lock()
+				defer d.statusCollectMutex.Unlock()
+
+				// ProxyStatus has no way to report errors
+				if status.Err == nil {
+					d.statusResponse.Proxy = status.Data.(*models.ProxyStatus)
+				}
+			},
+		},
+	}
+
+	d.statusCollector = status.NewCollector(probes, status.Configuration{
+		Interval:         5 * time.Second,
+		WarningThreshold: 15 * time.Second,
+		FailureThreshold: time.Minute,
+	})
+
+	return
 }
