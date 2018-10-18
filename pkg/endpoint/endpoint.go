@@ -63,6 +63,7 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/cache"
 
 	"github.com/sirupsen/logrus"
 )
@@ -137,7 +138,7 @@ func getCiliumClient() (ciliumClient cilium_client_v2.CiliumV2Interface, err err
 //   - for each CEP
 //       delete CEP if the corresponding pod does not exist
 // CiliumEndpoint objects have the same name as the pod they represent
-func RunK8sCiliumEndpointSyncGC() {
+func RunK8sCiliumEndpointSyncGC(cepStore, podStore cache.Store) {
 	var (
 		controllerName = fmt.Sprintf("sync-to-k8s-ciliumendpoint-gc (%v)", node.GetName())
 		scopedLog      = log.WithField("controller", controllerName)
@@ -172,7 +173,6 @@ func RunK8sCiliumEndpointSyncGC() {
 		scopedLog.WithError(err).Error("Not starting controller because unable to get cilium k8s client")
 		return
 	}
-	k8sClient := k8s.Client()
 
 	// this dummy manager is needed only to add this controller to the global list
 	controller.NewManager().UpdateController(controllerName,
@@ -198,22 +198,18 @@ func RunK8sCiliumEndpointSyncGC() {
 				}
 
 				clusterPodSet := map[string]bool{}
-				clusterPods, err := k8sClient.CoreV1().Pods("").List(meta_v1.ListOptions{})
-				if err != nil {
-					return err
-				}
-				for _, pod := range clusterPods.Items {
-					podFullName := pod.Name + ":" + pod.Namespace
+				for _, podFullName := range podStore.ListKeys() {
 					clusterPodSet[podFullName] = true
 				}
 
 				// "" is all-namespaces
-				ceps, err := ciliumClient.CiliumEndpoints(meta_v1.NamespaceAll).List(meta_v1.ListOptions{})
-				if err != nil {
-					scopedLog.WithError(err).Debug("Cannot list CEPs")
-					return err
-				}
-				for _, cep := range ceps.Items {
+				for _, cepIfc := range cepStore.List() {
+					cep, ok := cepIfc.(*cilium_v2.CiliumEndpoint)
+					if !ok {
+						scopedLog.WithField(logfields.Object, logfields.Repr(cepIfc)).Debug("Unable to cast CEP object")
+						continue
+					}
+
 					cepFullName := cep.Name + ":" + cep.Namespace
 					if _, found := clusterPodSet[cepFullName]; !found {
 						// delete

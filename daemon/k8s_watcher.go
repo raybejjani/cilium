@@ -391,7 +391,7 @@ func (d *Daemon) EnableK8sWatcher(reSyncPeriod time.Duration) error {
 
 	switch {
 	case networkPolicyV1VerConstr.Check(k8sServerVer):
-		policyController := k8sUtils.ControllerFactory(
+		policyController, _ := k8sUtils.ControllerFactory(
 			k8s.Client().NetworkingV1().RESTClient(),
 			&networkingv1.NetworkPolicy{},
 			k8sUtils.ResourceEventHandlerFactory(
@@ -432,7 +432,7 @@ func (d *Daemon) EnableK8sWatcher(reSyncPeriod time.Duration) error {
 		d.k8sAPIGroups.addAPI(k8sAPIGroupNetworkingV1Core)
 	}
 
-	svcController := k8sUtils.ControllerFactory(
+	svcController, _ := k8sUtils.ControllerFactory(
 		k8s.Client().CoreV1().RESTClient(),
 		&v1.Service{},
 		k8sUtils.ResourceEventHandlerFactory(
@@ -469,7 +469,7 @@ func (d *Daemon) EnableK8sWatcher(reSyncPeriod time.Duration) error {
 	go svcController.Run(wait.NeverStop)
 	d.k8sAPIGroups.addAPI(k8sAPIGroupServiceV1Core)
 
-	endpointController := k8sUtils.ControllerFactory(
+	endpointController, _ := k8sUtils.ControllerFactory(
 		k8s.Client().CoreV1().RESTClient(),
 		&v1.Endpoints{},
 		k8sUtils.ResourceEventHandlerFactory(
@@ -508,7 +508,7 @@ func (d *Daemon) EnableK8sWatcher(reSyncPeriod time.Duration) error {
 	d.k8sAPIGroups.addAPI(k8sAPIGroupEndpointV1Core)
 
 	if option.Config.IsLBEnabled() {
-		ingressController := k8sUtils.ControllerFactory(
+		ingressController, _ := k8sUtils.ControllerFactory(
 			k8s.Client().ExtensionsV1beta1().RESTClient(),
 			&v1beta1.Ingress{},
 			k8sUtils.ResourceEventHandlerFactory(
@@ -592,7 +592,12 @@ func (d *Daemon) EnableK8sWatcher(reSyncPeriod time.Duration) error {
 
 	si.Start(wait.NeverStop)
 
-	podsController := k8sUtils.ControllerFactory(
+	cepV2Controller := si.Cilium().V2().CiliumEndpoints().Informer()
+	cepStore := cepV2Controller.GetStore()
+	blockWaitGroupToSyncResources(&d.k8sResourceSyncWaitGroup, cepV2Controller, "CiliumEndpoint")
+	si.Start(wait.NeverStop)
+
+	podsController, podsStore := k8sUtils.ControllerFactory(
 		k8s.Client().CoreV1().RESTClient(),
 		&v1.Pod{},
 		k8sUtils.ResourceEventHandlerFactory(
@@ -629,7 +634,7 @@ func (d *Daemon) EnableK8sWatcher(reSyncPeriod time.Duration) error {
 	go podsController.Run(wait.NeverStop)
 	d.k8sAPIGroups.addAPI(k8sAPIGroupPodV1Core)
 
-	nodesController := k8sUtils.ControllerFactory(
+	nodesController, _ := k8sUtils.ControllerFactory(
 		k8s.Client().CoreV1().RESTClient(),
 		&v1.Node{},
 		k8sUtils.ResourceEventHandlerFactory(
@@ -666,7 +671,7 @@ func (d *Daemon) EnableK8sWatcher(reSyncPeriod time.Duration) error {
 	go nodesController.Run(wait.NeverStop)
 	d.k8sAPIGroups.addAPI(k8sAPIGroupNodeV1Core)
 
-	namespaceController := k8sUtils.ControllerFactory(
+	namespaceController, _ := k8sUtils.ControllerFactory(
 		k8s.Client().CoreV1().RESTClient(),
 		&v1.Namespace{},
 		k8sUtils.ResourceEventHandlerFactory(
@@ -695,7 +700,7 @@ func (d *Daemon) EnableK8sWatcher(reSyncPeriod time.Duration) error {
 	go namespaceController.Run(wait.NeverStop)
 	d.k8sAPIGroups.addAPI(k8sAPIGroupNamespaceV1Core)
 
-	endpoint.RunK8sCiliumEndpointSyncGC()
+	endpoint.RunK8sCiliumEndpointSyncGC(cepStore, podsStore)
 
 	return nil
 }
