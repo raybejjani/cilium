@@ -592,11 +592,6 @@ func (d *Daemon) EnableK8sWatcher(reSyncPeriod time.Duration) error {
 
 	si.Start(wait.NeverStop)
 
-	cepV2Controller := si.Cilium().V2().CiliumEndpoints().Informer()
-	cepStore := cepV2Controller.GetStore()
-	blockWaitGroupToSyncResources(&d.k8sResourceSyncWaitGroup, cepV2Controller, "CiliumEndpoint")
-	si.Start(wait.NeverStop)
-
 	podsController, podsStore := k8sUtils.ControllerFactory(
 		k8s.Client().CoreV1().RESTClient(),
 		&v1.Pod{},
@@ -700,7 +695,7 @@ func (d *Daemon) EnableK8sWatcher(reSyncPeriod time.Duration) error {
 	go namespaceController.Run(wait.NeverStop)
 	d.k8sAPIGroups.addAPI(k8sAPIGroupNamespaceV1Core)
 
-	endpoint.RunK8sCiliumEndpointSyncGC(cepStore, podsStore)
+	endpoint.RunK8sCiliumEndpointSyncGC(podsStore, reSyncPeriod)
 
 	return nil
 }

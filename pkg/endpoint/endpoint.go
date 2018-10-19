@@ -43,6 +43,7 @@ import (
 	cilium_v2 "github.com/cilium/cilium/pkg/k8s/apis/cilium.io/v2"
 	clientset "github.com/cilium/cilium/pkg/k8s/client/clientset/versioned"
 	cilium_client_v2 "github.com/cilium/cilium/pkg/k8s/client/clientset/versioned/typed/cilium.io/v2"
+	informer "github.com/cilium/cilium/pkg/k8s/client/informers/externalversions"
 	pkgLabels "github.com/cilium/cilium/pkg/labels"
 	"github.com/cilium/cilium/pkg/lock"
 	"github.com/cilium/cilium/pkg/logging/logfields"
@@ -92,7 +93,7 @@ var (
 
 // getCiliumClient builds and returns a k8s auto-generated client for cilium
 // objects
-func getCiliumClient() (ciliumClient cilium_client_v2.CiliumV2Interface, err error) {
+func getCiliumClient() (k8sClient clientset.Interface, ciliumClient cilium_client_v2.CiliumV2Interface, err error) {
 	// This allows us to reuse the k8s client
 	ciliumEndpointSyncControllerOnce.Do(func() {
 		var (
@@ -114,17 +115,17 @@ func getCiliumClient() (ciliumClient cilium_client_v2.CiliumV2Interface, err err
 	})
 
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// This guards against the situation where another invocation of this
 	// function (in another thread or previous in time) might have returned an
 	// error and not initialized ciliumEndpointSyncControllerK8sClient
 	if ciliumEndpointSyncControllerK8sClient == nil {
-		return nil, errors.New("No initialised k8s Cilium CRD client")
+		return ciliumEndpointSyncControllerK8sClient, nil, errors.New("No initialised k8s Cilium CRD client")
 	}
 
-	return ciliumEndpointSyncControllerK8sClient.CiliumV2(), nil
+	return ciliumEndpointSyncControllerK8sClient, ciliumEndpointSyncControllerK8sClient.CiliumV2(), nil
 }
 
 // RunK8sCiliumEndpointSyncGC starts the node-singleton sweeper for
@@ -138,11 +139,16 @@ func getCiliumClient() (ciliumClient cilium_client_v2.CiliumV2Interface, err err
 //   - for each CEP
 //       delete CEP if the corresponding pod does not exist
 // CiliumEndpoint objects have the same name as the pod they represent
-func RunK8sCiliumEndpointSyncGC(cepStore, podStore cache.Store) {
+func RunK8sCiliumEndpointSyncGC(podStore cache.Store, reSyncPeriod time.Duration) {
 	var (
 		controllerName = fmt.Sprintf("sync-to-k8s-ciliumendpoint-gc (%v)", node.GetName())
 		scopedLog      = log.WithField("controller", controllerName)
 		firstRun       = true
+
+		si              informer.SharedInformerFactory
+		cepV2Controller cache.SharedIndexInformer
+		cepStore        cache.Store
+		stopCh          chan struct{}
 	)
 
 	if option.Config.DisableCiliumEndpointCRD {
@@ -168,7 +174,7 @@ func RunK8sCiliumEndpointSyncGC(cepStore, podStore cache.Store) {
 		return
 	}
 
-	ciliumClient, err := getCiliumClient()
+	k8sClient, ciliumClient, err := getCiliumClient()
 	if err != nil {
 		scopedLog.WithError(err).Error("Not starting controller because unable to get cilium k8s client")
 		return
@@ -193,8 +199,26 @@ func RunK8sCiliumEndpointSyncGC(cepStore, podStore cache.Store) {
 				for id := range node.GetNodes() {
 					if idStr := id.String(); id.Cluster == thisNode.Cluster && idStr < thisNodeStr {
 						scopedLog.WithField(logfields.Node, idStr).Debug("Skipping GC because another node is a better candidate")
+						if stopCh != nil { // stop an informer if it was running
+							close(stopCh)
+							stopCh = nil
+						}
 						return nil
 					}
+				}
+
+				// we are the GC node but our informer is not running. Start it
+				if stopCh == nil {
+					si = informer.NewSharedInformerFactory(k8sClient, reSyncPeriod)
+					cepV2Controller = si.Cilium().V2().CiliumEndpoints().Informer()
+					cepStore = cepV2Controller.GetStore()
+					stopCh = make(chan struct{})
+					si.Start(stopCh)
+				}
+
+				if !cepV2Controller.HasSynced() {
+					scopedLog.Debug("Skipping GC because CEP controller is not synced")
+					return nil
 				}
 
 				clusterPodSet := map[string]bool{}
@@ -576,7 +600,7 @@ func (e *Endpoint) RunK8sCiliumEndpointSync() {
 		return
 	}
 
-	ciliumClient, err := getCiliumClient()
+	_, ciliumClient, err := getCiliumClient()
 	if err != nil {
 		scopedLog.WithError(err).Error("Not starting controller because unable to get cilium k8s client")
 		return
