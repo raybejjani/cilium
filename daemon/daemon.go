@@ -1334,6 +1334,11 @@ func NewDaemon() (*Daemon, *endpointRestoreState, error) {
 	d.dnsPoller = fqdn.NewDNSPoller(fqdn.DNSPollerConfig{
 		MinTTL:         toFQDNsMinTTL,
 		LookupDNSNames: fqdn.DNSLookupDefaultResolver,
+		LookupRulesByLabel: func(labels []*labels.Label) []*policyApi.Rule {
+			d.policy.Mutex.RLock()
+			defer d.policy.Mutex.RUnlock()
+			return d.policy.SearchRLocked(labels)
+		},
 		AddGeneratedRules: func(generatedRules []*policyApi.Rule) error {
 			// Insert the new rules into the policy repository. We need them to
 			// replace the previous set. This requires the labels to match (including

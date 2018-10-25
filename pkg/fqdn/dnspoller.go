@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/cilium/cilium/pkg/controller"
+	"github.com/cilium/cilium/pkg/labels"
 	"github.com/cilium/cilium/pkg/lock"
 	"github.com/cilium/cilium/pkg/logging/logfields"
 	"github.com/cilium/cilium/pkg/policy/api"
@@ -127,6 +128,11 @@ type DNSPollerConfig struct {
 	// When set to nil, fqdn.DNSLookupDefaultResolver is used.
 	LookupDNSNames func(dnsNames []string) (DNSIPs map[string]*DNSIPRecords, errorDNSNames map[string]error)
 
+	// LookupRulesByLabel returns rules we want from a policy respository.
+	// When set to nil, the internal rule copy is used. This may result in a race
+	// when rules change rapidly.
+	LookupRulesByLabel func(labels []*labels.Label) []*api.Rule
+
 	// AddGeneratedRules is a callback  to emit generated rules.
 	// When set to nil, it is a no-op.
 	AddGeneratedRules func([]*api.Rule) error
@@ -134,29 +140,47 @@ type DNSPollerConfig struct {
 
 // NewDNSPoller creates an initialized DNSPoller. It does not start the controller (use .Start)
 func NewDNSPoller(config DNSPollerConfig) *DNSPoller {
-	if config.MinTTL == 0 {
-		config.MinTTL = 2 * int(DNSPollerInterval/time.Second)
-	}
-
-	if config.Cache == nil {
-		config.Cache = DefaultDNSCache
-	}
-
-	if config.LookupDNSNames == nil {
-		config.LookupDNSNames = DNSLookupDefaultResolver
-	}
-
-	if config.AddGeneratedRules == nil {
-		config.AddGeneratedRules = func(generatedRules []*api.Rule) error { return nil }
-	}
-
-	return &DNSPoller{
+	poller := &DNSPoller{
 		config:      config,
 		IPs:         make(map[string][]net.IP),
 		sourceRules: make(map[string]map[string]struct{}),
 		allRules:    make(map[string]*api.Rule),
 		cache:       config.Cache,
 	}
+
+	if poller.config.MinTTL == 0 {
+		poller.config.MinTTL = 2 * int(DNSPollerInterval/time.Second)
+	}
+
+	if poller.config.Cache == nil {
+		poller.config.Cache = DefaultDNSCache
+		poller.cache = poller.config.Cache
+	}
+
+	if poller.config.LookupDNSNames == nil {
+		poller.config.LookupDNSNames = DNSLookupDefaultResolver
+	}
+
+	if poller.config.LookupRulesByLabel == nil {
+		poller.config.LookupRulesByLabel = func(lbls []*labels.Label) []*api.Rule {
+			uuid := labels.LabelArray(lbls).Get(uuidLabelSearchKey)
+			if uuid == "" {
+				return nil
+			}
+
+			rule := poller.allRules[uuid]
+			if rule == nil {
+				return nil
+			}
+			return []*api.Rule{rule}
+		}
+	}
+
+	if config.AddGeneratedRules == nil {
+		config.AddGeneratedRules = func(generatedRules []*api.Rule) error { return nil }
+	}
+
+	return poller
 }
 
 // MarkToFQDNRules adds a tracking label to the rule, if it contains ToFQDN
@@ -367,14 +391,22 @@ func (poller *DNSPoller) GetRulesByUUID(uuids []string) (sourceRules []*api.Rule
 	defer poller.Unlock()
 
 	for _, uuid := range uuids {
-		rule, ok := poller.allRules[uuid]
-		// This may happen if a rule was deleted during the DNS lookups
-		if !ok {
+		rules := poller.config.LookupRulesByLabel([]*labels.Label{{
+			Key:    generatedLabelNameUUID,
+			Value:  uuid,
+			Source: labels.LabelSourceCiliumGenerated,
+		}})
+
+		if len(rules) == 0 { // not found
+			// This may happen if a rule was deleted during the DNS lookups
 			notFoundUUIDs = append(notFoundUUIDs, uuid)
 			continue
 		}
-
-		sourceRules = append(sourceRules, rule)
+		for _, rule := range rules {
+			ruleCopy := rule.DeepCopy()
+			stripToCIDRSet(ruleCopy)
+			sourceRules = append(sourceRules, ruleCopy)
+		}
 	}
 
 	return sourceRules, notFoundUUIDs
