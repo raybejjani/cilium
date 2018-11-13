@@ -17,6 +17,7 @@ package proxy
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/cilium/cilium/pkg/completion"
 	"github.com/cilium/cilium/pkg/fqdn/dnsproxy"
@@ -47,6 +48,7 @@ type dnsRedirect struct {
 	conf                 dnsConfiguration
 	DNSProxyPort         uint16
 	currentRules         policy.L7DataMap
+	closeChan            chan struct{} // closed when Close is called to stop watcher
 }
 
 type dnsConfiguration struct {
@@ -121,6 +123,7 @@ func createDNSRedirect(r *Redirect, conf dnsConfiguration, endpointInfoRegistry 
 		redirect:             r,
 		conf:                 conf,
 		endpointInfoRegistry: endpointInfoRegistry,
+		closeChan:            make(chan struct{}),
 
 		// NOTE: We use a fixed port here but a port was given to us in r. It's
 		// unclear who will release it, nor if this global port will be released
@@ -134,6 +137,8 @@ func createDNSRedirect(r *Redirect, conf dnsConfiguration, endpointInfoRegistry 
 		"conf":        conf,
 	}).Debug("Creating DNS Proxy redirect")
 
+	// watchForChanges is deferred to ensure it runs after UpdateRules returns
+	defer func() { go watchForChanges(dr) }()
 	return dr, dr.UpdateRules(nil)
 }
 
@@ -143,4 +148,33 @@ func copyRules(rules policy.L7DataMap) policy.L7DataMap {
 		currentRules[key] = val
 	}
 	return currentRules
+}
+
+// watchForChanges calls UpdateRules on the dnsRedirect when the rules in
+// .redir are changed. There is likely a callback to do this somewhere :/
+func watchForChanges(dr *dnsRedirect) {
+	var (
+		lastLastUpdated time.Time
+		lastRules       *policy.L7DataMap
+	)
+	for {
+		select {
+		case <-dr.closeChan:
+			return
+		case <-time.After(time.Second):
+			dr.redirect.mutex.RLock()
+			var (
+				currLastUpdated = dr.redirect.lastUpdated
+				currRules       = &dr.redirect.rules
+			)
+			dr.redirect.mutex.RUnlock()
+
+			if currLastUpdated.After(lastLastUpdated) || currRules != lastRules {
+				log.Info("DNS proxy saw a change")
+				dr.UpdateRules(nil)
+				lastLastUpdated = currLastUpdated
+				lastRules = currRules
+			}
+		}
+	}
 }
