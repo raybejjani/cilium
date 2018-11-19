@@ -33,7 +33,6 @@ func Test(t *testing.T) {
 }
 
 type DNSProxyTestSuite struct {
-	request      *dns.Msg
 	dnsTCPClient *dns.Client
 	dnsServer    *dns.Server
 	proxy        *DNSProxy
@@ -66,7 +65,6 @@ func serveDNS(w dns.ResponseWriter, r *dns.Msg) {
 }
 
 func (s *DNSProxyTestSuite) SetUpSuite(c *C) {
-	s.request = new(dns.Msg)
 	s.dnsTCPClient = &dns.Client{Net: "tcp", Timeout: time.Second, SingleInflight: true}
 	s.dnsServer = setupServer()
 
@@ -97,37 +95,42 @@ func (s *DNSProxyTestSuite) TearDownSuite(c *C) {
 func (s *DNSProxyTestSuite) TestRejectMatchingForDifferentEndpoint(c *C) {
 	// Reject a query from not endpoint1
 	s.proxy.AddAllowed("c[il]{3,3}um.io.", "notendpoint1")
-	s.request.SetQuestion("cilium.io.", dns.TypeA)
-	_, _, err := s.dnsTCPClient.Exchange(s.request, s.proxy.TCPServer.Listener.Addr().String())
+	request := new(dns.Msg)
+	request.SetQuestion("cilium.io.", dns.TypeA)
+	_, _, err := s.dnsTCPClient.Exchange(request, s.proxy.TCPServer.Listener.Addr().String())
 	c.Assert(err, NotNil, Commentf("DNS request from test client succeded when it should be blocked"))
 }
 
 func (s *DNSProxyTestSuite) TestAcceptMatchingFromEndpoint(c *C) {
 	// accept a query that matches from endpoint1
 	s.proxy.AddAllowed("c[il]{3,3}um.io.", "endpoint1")
-	s.request.SetQuestion("cilium.io.", dns.TypeA)
-	_, _, err := s.dnsTCPClient.Exchange(s.request, s.proxy.TCPServer.Listener.Addr().String())
+	request := new(dns.Msg)
+	request.SetQuestion("cilium.io.", dns.TypeA)
+	_, _, err := s.dnsTCPClient.Exchange(request, s.proxy.TCPServer.Listener.Addr().String())
 	c.Assert(err, IsNil, Commentf("DNS request from test client failed when it should succeed"))
 }
 
 func (s *DNSProxyTestSuite) TestAcceptNonRegex(c *C) {
 	s.proxy.AddAllowed("simple.io.", "endpoint1")
-	s.request.SetQuestion("simple.io.", dns.TypeA)
-	_, _, err := s.dnsTCPClient.Exchange(s.request, s.proxy.TCPServer.Listener.Addr().String())
+	request := new(dns.Msg)
+	request.SetQuestion("simple.io.", dns.TypeA)
+	_, _, err := s.dnsTCPClient.Exchange(request, s.proxy.TCPServer.Listener.Addr().String())
 	c.Assert(err, IsNil, Commentf("DNS request from test client failed when it should succeed"))
 }
 
 func (s *DNSProxyTestSuite) TestRejectNonRegex(c *C) {
 	// reject a query for a non-regex where a . is different (i.e. ensure simple FQDNs treat . as .)
 	s.proxy.AddAllowed("simple.io.", "endpoint1")
-	s.request.SetQuestion("simpleXio.", dns.TypeA)
-	_, _, err := s.dnsTCPClient.Exchange(s.request, s.proxy.TCPServer.Listener.Addr().String())
+	request := new(dns.Msg)
+	request.SetQuestion("simpleXio.", dns.TypeA)
+	_, _, err := s.dnsTCPClient.Exchange(request, s.proxy.TCPServer.Listener.Addr().String())
 	c.Assert(err, NotNil, Commentf("DNS request from test client succeeded when it should be blocked"))
 }
 
 func (s *DNSProxyTestSuite) TestRejectNonMatching(c *C) {
-	s.request.SetQuestion("notcilium.io.", dns.TypeA)
-	_, _, err := s.dnsTCPClient.Exchange(s.request, s.proxy.TCPServer.Listener.Addr().String())
+	request := new(dns.Msg)
+	request.SetQuestion("notcilium.io.", dns.TypeA)
+	_, _, err := s.dnsTCPClient.Exchange(request, s.proxy.TCPServer.Listener.Addr().String())
 	c.Assert(err, NotNil, Commentf("DNS request from test client succeeded when it should be blocked"))
 }
 
@@ -135,9 +138,46 @@ func (s *DNSProxyTestSuite) TestRespondViaCorrectProtocol(c *C) {
 	// respond with an actual answer for the query. This also tests that the
 	// connection was forwarded via the correct protocol (tcp/udp)
 	s.proxy.AddAllowed("c[il]{3,3}um.io.", "endpoint1")
-	s.request.SetQuestion("cilium.io.", dns.TypeA)
-	response, _, err := s.dnsTCPClient.Exchange(s.request, s.proxy.TCPServer.Listener.Addr().String())
+	request := new(dns.Msg)
+	request.SetQuestion("cilium.io.", dns.TypeA)
+	response, _, err := s.dnsTCPClient.Exchange(request, s.proxy.TCPServer.Listener.Addr().String())
 	c.Assert(err, IsNil, Commentf("DNS request from test client failed when it should succeed"))
 	c.Assert(len(response.Answer), Equals, 1, Commentf("Proxy returned incorrect number of answer RRs", response.Answer))
 	c.Assert(response.Answer[0].String(), Equals, "cilium.io.\t60\tIN\tA\t1.1.1.1", Commentf("Proxy returned incorrect RRs"))
+}
+
+func (s *DNSProxyTestSuite) TestRespondMixedCaseInRequest(c *C) {
+	s.proxy.AddAllowed("c[il]{3,3}um.io.", "endpoint1")
+	request := new(dns.Msg)
+	request.SetQuestion("CILIUM.io.", dns.TypeA)
+	response, _, err := s.dnsTCPClient.Exchange(request, s.proxy.TCPServer.Listener.Addr().String())
+	c.Assert(err, IsNil, Commentf("DNS request from test client failed when it should succeed"))
+	c.Assert(len(response.Answer), Equals, 1, Commentf("Proxy returned incorrect number of answer RRs", response.Answer))
+	c.Assert(response.Answer[0].String(), Equals, "CILIUM.io.\t60\tIN\tA\t1.1.1.1", Commentf("Proxy returned incorrect RRs"))
+}
+
+func (s *DNSProxyTestSuite) TestRespondMixedCaseInResponse(c *C) {
+	s.proxy.AddAllowed("c[IL]{3,3}um.io.", "endpoint1")
+	request := new(dns.Msg)
+	request.SetQuestion("ciliuM.io.", dns.TypeA)
+	response, _, err := s.dnsTCPClient.Exchange(request, s.proxy.TCPServer.Listener.Addr().String())
+	c.Assert(err, IsNil, Commentf("DNS request from test client failed when it should succeed"))
+	c.Assert(len(response.Answer), Equals, 1, Commentf("Proxy returned incorrect number of answer RRs", response.Answer))
+	c.Assert(response.Answer[0].String(), Equals, "ciliuM.io.\t60\tIN\tA\t1.1.1.1", Commentf("Proxy returned incorrect RRs"))
+}
+
+func (s *DNSProxyTestSuite) TestCheckAllowedMixedCaseChecked(c *C) {
+	s.proxy.AddAllowed("c[il]{3,3}um.io.", "endpoint1")
+
+	result := s.proxy.CheckAllowed("CILIUM.io.", "endpoint1")
+
+	c.Assert(result, Equals, true, Commentf("Mixed case dns request should be allowed"))
+}
+
+func (s *DNSProxyTestSuite) TestCheckAllowedMixedCaseRule(c *C) {
+	s.proxy.AddAllowed("CILIUM.io.", "endpoint1")
+
+	result := s.proxy.CheckAllowed("ciliuM.io.", "endpoint1")
+
+	c.Assert(result, Equals, true, Commentf("Mixed case dns request should be allowed based on mixed case rule"))
 }
