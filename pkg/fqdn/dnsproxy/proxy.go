@@ -26,6 +26,8 @@ import (
 	"github.com/cilium/cilium/pkg/fqdn/regexpmap"
 	"github.com/cilium/cilium/pkg/lock"
 	"github.com/cilium/cilium/pkg/logging/logfields"
+	"github.com/cilium/cilium/pkg/proxy/accesslog"
+	"github.com/cilium/cilium/pkg/u8proto"
 	"github.com/sirupsen/logrus"
 
 	"github.com/miekg/dns"
@@ -76,6 +78,11 @@ type DNSProxy struct {
 	// design now.
 	NotifyOnDNSResponse NotifyOnDNSResponseFunc
 
+	// EmitAccessLogFunc prints information about the request in the access-log. It
+	// will be called when the request is denied or forwarded, and when a response
+	// is recieved.
+	LogRequest EmitAccessLogFunc
+
 	// UDPServer, TCPServer are the miekg/dns server instances. They handle DNS
 	// parsing etc. for us.
 	UDPServer, TCPServer *dns.Server
@@ -110,11 +117,14 @@ type DNSProxy struct {
 
 // LookupEndpointIDByIPFunc wraps logic to lookup an endpoint with any backend.
 // See DNSProxy.LookupEndpointIDByIP for usage.
-type LookupEndpointIDByIPFunc func(ip net.IP) (endpointID string, err error)
+type LookupEndpointIDByIPFunc func(ip net.IP) (endpointID uint16, err error)
 
 // NotifyOnDNSResponseFunc handles propagating DNS response data
 // See DNSProxy.LookupEndpointIDByIP for usage.
 type NotifyOnDNSResponseFunc func(lookupTime time.Time, name string, ips []net.IP, ttl int) error
+
+// EmitAccessLogFunc prints information about the request in the access-log.
+type EmitAccessLogFunc func(endpointID uint16, t accesslog.FlowType, ingress, allow bool, srcAddr, dstAddr string, proto u8proto.U8proto) error
 
 // StartDNSProxy starts a proxy used for DNS L7 redirects that listens on
 // address and port.
@@ -127,7 +137,7 @@ type NotifyOnDNSResponseFunc func(lookupTime time.Time, name string, ips []net.I
 // notifyFunc will be called with DNS response data that is returned to a
 // requesting endpoint. Note that denied requests will not trigger this
 // callback.
-func StartDNSProxy(address string, port uint16, lookupEPFunc LookupEndpointIDByIPFunc, notifyFunc NotifyOnDNSResponseFunc) (*DNSProxy, error) {
+func StartDNSProxy(address string, port uint16, lookupEPFunc LookupEndpointIDByIPFunc, notifyFunc NotifyOnDNSResponseFunc, logAccess EmitAccessLogFunc) (*DNSProxy, error) {
 	if port == 0 {
 		log.Debug("DNS Proxy port is configured to 0. A random port will be assigned by the OS.")
 	}
@@ -139,6 +149,7 @@ func StartDNSProxy(address string, port uint16, lookupEPFunc LookupEndpointIDByI
 	p := &DNSProxy{
 		LookupEndpointIDByIP:  lookupEPFunc,
 		NotifyOnDNSResponse:   notifyFunc,
+		LogRequest:            logAccess,
 		lookupTargetDNSServer: lookupTargetDNSServer,
 		allowed:               regexpmap.NewRegexpMap(),
 	}
@@ -247,6 +258,7 @@ func (p *DNSProxy) CheckAllowed(name, endpointID string) bool {
 func (p *DNSProxy) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 	requestID := r.Id // keep the original request ID
 	qname := string(r.Question[0].Name)
+	protocol := u8proto.ProtoIDs[w.LocalAddr().Network()]
 	scopedLog := log.WithFields(logrus.Fields{
 		logfields.DNSName: qname,
 		logfields.IPAddr:  w.RemoteAddr()})
@@ -270,8 +282,15 @@ func (p *DNSProxy) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 	// Note: The cache doesn't know about the source of the DNS data (yet) and so
 	// it won't enforce any separation between results from different endpoints.
 	// This isn't ideal but we are trusting the DNS responses anyway.
-	if !p.CheckAllowed(qname, endpointID) {
+	if !p.CheckAllowed(qname, strconv.Itoa(int(endpointID))) {
 		scopedLog.Debug("Rejecting DNS query from endpoint")
+		p.LogRequest(endpointID, // EP Cilium ID
+			accesslog.TypeRequest,   // log type (request vs response)
+			false,                   // ingress
+			false,                   // allowed
+			w.RemoteAddr().String(), // source address, pod address
+			"",                      // destination address, intended server address
+			protocol)                // protocol of request/response
 		return
 	}
 
@@ -282,6 +301,13 @@ func (p *DNSProxy) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 		return
 	}
 	scopedLog.WithField("server", targetServer).Debug("Found target server to forward DNS request to")
+	p.LogRequest(endpointID, // EP Cilium ID
+		accesslog.TypeRequest,   // log type (request vs response)
+		false,                   // ingress
+		true,                    // allowed
+		w.RemoteAddr().String(), // source address, pod address
+		targetServer,            // destination address, intended server address
+		protocol)                // protocol of request/response
 
 	// Keep the same L4 protocol. This handles DNS re-requests over TCP, for
 	// requests that were too large for UDP.
@@ -304,6 +330,14 @@ func (p *DNSProxy) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 		return
 	}
 	scopedLog.WithField(logfields.Response, response).Debug("Received DNS response to proxied lookup")
+
+	p.LogRequest(endpointID, // EP Cilium ID
+		accesslog.TypeResponse,  // log type (request vs response)
+		true,                    // ingress
+		true,                    // allowed
+		targetServer,            // src address, intended server address
+		w.RemoteAddr().String(), // destination address, pod address
+		protocol)                // protocol of request/response
 
 	// emit the response data via p.NotifyOnDNSResponse, only if the response is a success!
 	if response.Rcode == dns.RcodeSuccess {

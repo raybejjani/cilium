@@ -77,9 +77,11 @@ import (
 	"github.com/cilium/cilium/pkg/policy"
 	policyApi "github.com/cilium/cilium/pkg/policy/api"
 	"github.com/cilium/cilium/pkg/proxy"
+	"github.com/cilium/cilium/pkg/proxy/accesslog"
 	"github.com/cilium/cilium/pkg/proxy/logger"
 	"github.com/cilium/cilium/pkg/revert"
 	"github.com/cilium/cilium/pkg/sockops"
+	"github.com/cilium/cilium/pkg/u8proto"
 	"github.com/cilium/cilium/pkg/workloads"
 
 	"github.com/go-openapi/runtime/middleware"
@@ -1332,17 +1334,40 @@ func (d *Daemon) bootstrapFQDN() (err error) {
 	// StartProxySupport
 	proxy.DefaultDNSProxy, err = dnsproxy.StartDNSProxy("", uint16(proxy.DNSProxyPort),
 		// LookupEPByIP
-		func(endpointIP net.IP) (endpointID string, err error) {
+		func(endpointIP net.IP) (endpointID uint16, err error) {
 			e := endpointmanager.LookupIPv4(endpointIP.String())
 			if e == nil {
-				return "", fmt.Errorf("Cannot find endpoint with IP %s", endpointIP.String())
+				return 0, fmt.Errorf("Cannot find endpoint with IP %s", endpointIP.String())
 			}
 
-			return e.StringID(), nil
+			return e.ID, nil
 		},
 		// NotifyOnDNSResponse
 		func(lookupTime time.Time, name string, ips []net.IP, ttl int) error {
 			return d.dnsRuleGen.UpdateGenerateDNS(lookupTime, map[string]*fqdn.DNSIPRecords{name: {IPs: ips, TTL: ttl}})
+		},
+		// LogRequest
+		func(endpointID uint16, flowType accesslog.FlowType, ingress, allow bool, srcAddr, dstAddr string, proto u8proto.U8proto) error {
+			e := endpointmanager.LookupCiliumID(endpointID)
+			var verdict accesslog.FlowVerdict
+			if allow {
+				verdict = accesslog.VerdictForwarded
+			} else {
+				verdict = accesslog.VerdictDenied
+			}
+
+			// need reason
+			// need DNS data field: qname, qtype, response data?
+			record := logger.NewLogRecord(proxy.DefaultEndpointInfoRegistry, e, flowType, ingress,
+				func(lr *logger.LogRecord) { lr.LogRecord.TransportProtocol = accesslog.TransportProtocol(proto) },
+				logger.LogTags.Verdict(verdict, "NEED REASON"),
+				logger.LogTags.Addressing(logger.AddressingInfo{
+					SrcIPPort:   srcAddr,
+					DstIPPort:   dstAddr,
+					SrcIdentity: e.GetIdentity().Uint32(),
+				}))
+			record.Log()
+			return nil
 		})
 	return err // filled by StartDNSProxy
 }
