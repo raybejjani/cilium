@@ -19,6 +19,7 @@ package regexpmap
 import (
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -127,4 +128,88 @@ func (ds *RegexpMapTestSuite) BenchmarkRegexGroups(c *C) {
 	for i := c.N; i > 0; i-- {
 		re.FindSubmatchIndex(in)
 	}
+}
+
+func benchmarkKeepUniqueStrings(c *C, size int, includeCreate bool) {
+	c.StopTimer()
+	elements := []string{}
+	for i := size; i > 0; i-- {
+		elements = append(elements, strconv.Itoa(i))
+	}
+	copies := make([][]string, c.N)
+	for i := 0; i < c.N; i++ {
+		if includeCreate {
+			c.StartTimer()
+		}
+		copies[i] = append(copies[i], elements...)
+		if includeCreate {
+			c.StopTimer()
+		}
+	}
+
+	c.StartTimer()
+	for i := 0; i < c.N; i++ {
+		keepUniqueStrings(copies[i])
+	}
+}
+
+func (ds *RegexpMapTestSuite) BenchmarkKeepUniqueStrings10(c *C) {
+	benchmarkKeepUniqueStrings(c, 10, false)
+}
+
+func (ds *RegexpMapTestSuite) BenchmarkKeepUniqueStrings1000(c *C) {
+	benchmarkKeepUniqueStrings(c, 1000, false)
+}
+
+func (ds *RegexpMapTestSuite) BenchmarkKeepUniqueStringsWithSliceCreate10(c *C) {
+	benchmarkKeepUniqueStrings(c, 10, false)
+}
+
+func (ds *RegexpMapTestSuite) BenchmarkKeepUniqueStringsWithSliceCreate1000(c *C) {
+	benchmarkKeepUniqueStrings(c, 1000, false)
+}
+
+func benchmarkMapUniqueStrings(c *C, size int, includeCreate bool) {
+	c.StopTimer()
+	elements := map[string]struct{}{}
+	for i := size; i > 0; i-- {
+		elements[strconv.Itoa(i)] = struct{}{}
+	}
+	copies := make([]map[string]struct{}, c.N)
+	for i := 0; i < c.N; i++ {
+		if includeCreate {
+			c.StartTimer()
+		}
+		copies[i] = map[string]struct{}{}
+		for k, v := range elements {
+			copies[i][k] = v
+		}
+		if includeCreate {
+			c.StopTimer()
+		}
+	}
+
+	out := make([]string, 0, len(elements))
+	c.StartTimer()
+	for i := 0; i < c.N; i++ {
+		for k := range copies[i] {
+			out = append(out, k)
+		}
+	}
+}
+
+func (ds *RegexpMapTestSuite) BenchmarkMapUniqueStrings10(c *C) {
+	benchmarkMapUniqueStrings(c, 10, false)
+}
+
+func (ds *RegexpMapTestSuite) BenchmarkMapUniqueStrings1000(c *C) {
+	benchmarkMapUniqueStrings(c, 1000, false)
+}
+
+func (ds *RegexpMapTestSuite) BenchmarkMapUniqueStringsWithMapCreate10(c *C) {
+	benchmarkMapUniqueStrings(c, 10, true)
+}
+
+func (ds *RegexpMapTestSuite) BenchmarkMapUniqueStringsWithMapCreate1000(c *C) {
+	benchmarkMapUniqueStrings(c, 1000, true)
 }
