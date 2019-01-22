@@ -279,6 +279,40 @@ Changes that may require action
    reduced binary size. If you want to continue using the option, please use an
    older version of the cilium-bugtool binary.
 
+ * The :ref:`DNS Polling` option used by ``toFQDNs.matchName`` rules is
+   disabled by default in 1.4.x due to :ref:`limitations in the implementation
+   <DNS Polling>`. It has been replaced by :ref:`DNS Proxy` support, which must
+   be explicitly enabled via changes to the policy described below. To ease
+   upgrade, users may opt to enable the :ref:`DNS Polling` in v1.4.x by adding
+   the ``--tofqdns-enable-poller`` option to cilium-agent without changing
+   policies.
+
+   Policy rules may be prepared to use the :ref:`DNS Proxy` before an upgrade
+   to 1.4. The new policy rule fields ``toFQDNs.matchPattern`` and
+   ``toPorts.rules.dns.matchName/matchPattern`` will be ignored by older cilium
+   versions and can be safely implemented prior to an upgrade.
+
+   The following example allows DNS access to ``kube-dns`` via the :ref:`DNS
+   Proxy` and allows all DNS requests to ``kube-dns``. For completeness,
+   ``toFQDNs`` rules are included for examples of the syntax for those L3
+   policies as well. Existing ``toFQDNs`` rules do not need to be modified but
+   will now use IPs seen by DNS requests allowed by the
+   ``toFQDNs.matchPattern`` rule.
+
+   .. only:: html
+   
+      .. tabs::
+        .. group-tab:: k8s YAML
+   
+           .. literalinclude:: ../../examples/policies/l7/dns/dns-upgrade.yaml
+        .. group-tab:: JSON
+   
+           .. literalinclude:: ../../examples/policies/l7/dns/dns-upgrade.json
+   
+   .. only:: epub or latex
+   
+           .. literalinclude:: ../../examples/policies/l7/dns/dns-upgrade.json
+
  * The DaemonSet now uses ``dnsPolicy: ClusterFirstWithHostNet`` in order for
    Cilium to look up Kubernetes service names via DNS. This in turn requires
    the cluster to run kube-dns. If you are not running kube-dns, remove the
