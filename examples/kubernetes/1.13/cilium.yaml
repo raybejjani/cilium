@@ -137,6 +137,8 @@ data:
   # To run in this mode in Kubernetes change the value of the hostPID from
   # false to true. Can be found under the path `spec.spec.hostPID`
   flannel-manage-existing-containers: "false"
+
+  tofqdns-pre-cache: "/var/run/cilium/dns-precache-upgrade-1.4.json"
 ---
 apiVersion: apps/v1
 kind: DaemonSet
@@ -174,6 +176,12 @@ spec:
         command:
         - cilium-agent
         env:
+        - name: CILIUM_TOFQDNS_PRE_CACHE
+          valueFrom:
+            configMapKeyRef:
+              key: tofqdns-pre-cache
+              name: cilium-config
+              optional: true
         - name: K8S_NODE_NAME
           valueFrom:
             fieldRef:
@@ -313,7 +321,7 @@ spec:
               key: auto-direct-node-routes
               name: cilium-config
               optional: true
-        image: docker.io/cilium/cilium:latest
+        image: docker.io/cilium/cilium:v1.4.0-rc8
         imagePullPolicy: Always
         lifecycle:
           postStart:
