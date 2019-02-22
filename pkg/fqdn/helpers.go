@@ -17,6 +17,7 @@ package fqdn
 import (
 	"net"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/cilium/cilium/pkg/fqdn/matchpattern"
@@ -24,20 +25,26 @@ import (
 	"github.com/cilium/cilium/pkg/ip"
 	"github.com/cilium/cilium/pkg/labels"
 	"github.com/cilium/cilium/pkg/policy/api"
-	"github.com/cilium/cilium/pkg/uuid"
 	"github.com/miekg/dns"
 	"github.com/sirupsen/logrus"
 )
 
-// getUUIDFromRuleLabels returns the value of the UUID label
-func getRuleUUIDLabel(rule *api.Rule) (uuid string) {
-	return rule.Labels.Get(uuidLabelSearchKey)
+func LabelArraySHA256(lbls labels.LabelArray) string {
+	labelStrings := []string{}
+	for _, l := range lbls {
+		labelStrings = append(labelStrings, l.String())
+	}
+
+	sort.Strings(labelStrings)
+	lblSet := labels.NewLabelsFromModel(labelStrings)
+
+	return lblSet.SHA256Sum()
+
 }
 
-// generateUUIDLabel builds a random UUID label that can be used to uniquely identify
-// rules augmented with a "toCIDRSet" based on "toFQDNs".
-func generateUUIDLabel() labels.Label {
-	return labels.NewLabel(generatedLabelNameUUID, uuid.NewUUID().String(), labels.LabelSourceCiliumGenerated)
+// getUUIDFromRuleLabels returns the value of the UUID label
+func getRuleUUIDLabel(rule *api.Rule) (uuid string) {
+	return LabelArraySHA256(rule.Labels)
 }
 
 // injectToCIDRSetRules resets the ToCIDRSets of all egress rules containing

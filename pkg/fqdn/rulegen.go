@@ -75,7 +75,7 @@ type RuleGen struct {
 
 	// allRules is the global source of truth for rules we are managing. It maps
 	// UUID to the rule copy.
-	allRules map[string]*api.Rule
+	allRules map[string]labels.LabelArray
 
 	// cache is a private copy of the pointer from config.
 	cache *DNSCache
@@ -90,14 +90,14 @@ func NewRuleGen(config Config) *RuleGen {
 	}
 
 	if config.AddGeneratedRules == nil {
-		config.AddGeneratedRules = func(generatedRules []*api.Rule) error { return nil }
+		config.AddGeneratedRules = func(generatedRules []labels.LabelArray) error { return nil }
 	}
 
 	return &RuleGen{
 		config:      config,
 		namesToPoll: make(map[string]struct{}),
 		sourceRules: regexpmap.NewRegexpMap(),
-		allRules:    make(map[string]*api.Rule),
+		allRules:    make(map[string]labels.LabelArray),
 		cache:       config.Cache,
 	}
 
@@ -120,13 +120,9 @@ perRule:
 		// would lack the UUID-tagged rule and we would add a new UUID label in
 		// this function. Cleanup for existing rules with UUIDs is handled in
 		// StopManageDNSName
-		if !hasToFQDN(sourceRule) || sourceRule.Labels.Has(uuidLabelSearchKey) {
+		if !hasToFQDN(sourceRule) {
 			continue perRule
 		}
-
-		// add a unique ID that we can use later to replace this rule.
-		uuidLabel := generateUUIDLabel()
-		sourceRule.Labels = append(sourceRule.Labels, uuidLabel)
 
 		// Strip out toCIDRSet
 		// Note: See Hack 1 above. When we generate rules, we add them and this
@@ -156,8 +152,7 @@ func (gen *RuleGen) StartManageDNSName(sourceRules []*api.Rule) error {
 
 perRule:
 	for _, sourceRule := range sourceRules {
-		// Note: we rely on MarkToFQDNRules to insert this label.
-		if !sourceRule.Labels.Has(uuidLabelSearchKey) {
+		if !hasToFQDN(sourceRule) {
 			continue perRule
 		}
 
@@ -200,11 +195,8 @@ func (gen *RuleGen) StopManageDNSName(sourceRules []*api.Rule) {
 	defer gen.Unlock()
 
 	for _, sourceRule := range sourceRules {
+		// FIXME: This needs to account for deleted toFQDNs rules... :/
 		// skip unmarked rules, nothing to do
-		if !sourceRule.Labels.Has(uuidLabelSearchKey) {
-			continue
-		}
-
 		uuid := getRuleUUIDLabel(sourceRule)
 		noLongerManagedDNSNames := gen.removeRule(uuid, sourceRule)
 		log.WithFields(logrus.Fields{
@@ -240,24 +232,18 @@ func (gen *RuleGen) UpdateGenerateDNS(lookupTime time.Time, updatedDNSIPs map[st
 	}
 
 	// Generate a new rule for each sourceRule that needs an update.
-	rulesToUpdate, notFoundUUIDs := gen.GetRulesByUUID(uuidsToUpdate)
+	labelsToUpdate, notFoundUUIDs := gen.GetRulesByUUID(uuidsToUpdate)
 	if len(notFoundUUIDs) != 0 {
 		log.WithField("uuid", strings.Join(notFoundUUIDs, ",")).
 			Debug("Did not find all rules during update")
 	}
-	generatedRules, namesMissingIPs := gen.GenerateRulesFromSources(rulesToUpdate)
-	if len(namesMissingIPs) != 0 {
-		log.WithField(logfields.DNSName, strings.Join(namesMissingIPs, ",")).
-			Debug("No IPs to insert when generating DNS name selected by ToFQDN rule")
-	}
-
 	// no new rules to add, do not call AddGeneratedRules below
-	if len(generatedRules) == 0 {
+	if len(labelsToUpdate) == 0 {
 		return nil
 	}
 
 	// emit the new rules
-	return gen.config.AddGeneratedRules(generatedRules)
+	return gen.config.AddGeneratedRules(labelsToUpdate)
 }
 
 // ForceGenerateDNS unconditionally regenerates all rules that refer to DNS
@@ -278,24 +264,18 @@ func (gen *RuleGen) ForceGenerateDNS(namesToRegen []string) error {
 	}
 
 	// Generate a new rule for each sourceRule that needs an update.
-	rulesToUpdate, notFoundUUIDs := gen.GetRulesByUUID(uuidsToUpdate)
+	labelsToUpdate, notFoundUUIDs := gen.GetRulesByUUID(uuidsToUpdate)
 	if len(notFoundUUIDs) != 0 {
 		log.WithField("uuid", strings.Join(notFoundUUIDs, ",")).
 			Debug("Did not find all rules during update")
 	}
-	generatedRules, namesMissingIPs := gen.GenerateRulesFromSources(rulesToUpdate)
-	if len(namesMissingIPs) != 0 {
-		log.WithField(logfields.DNSName, strings.Join(namesMissingIPs, ",")).
-			Debug("No IPs to insert when generating DNS name selected by ToFQDN rule")
-	}
-
 	// no new rules to add, do not call AddGeneratedRules below
-	if len(generatedRules) == 0 {
+	if len(labelsToUpdate) == 0 {
 		return nil
 	}
 
 	// emit the new rules
-	return gen.config.AddGeneratedRules(generatedRules)
+	return gen.config.AddGeneratedRules(labelsToUpdate)
 }
 
 // UpdateDNSIPs updates the IPs for each DNS name in updatedDNSIPs.
@@ -343,22 +323,22 @@ perDNSName:
 // notFoundUUIDs is the set of UUIDs not found. This can occur when a delete
 // races with other operations. It is benign in the sense that if a rule UUID is
 // not found, no action further action is needed.
-func (gen *RuleGen) GetRulesByUUID(uuids []string) (sourceRules []*api.Rule, notFoundUUIDs []string) {
+func (gen *RuleGen) GetRulesByUUID(uuids []string) (sourceLabels []labels.LabelArray, notFoundUUIDs []string) {
 	gen.Lock()
 	defer gen.Unlock()
 
 	for _, uuid := range uuids {
-		rule, ok := gen.allRules[uuid]
+		lbls, ok := gen.allRules[uuid]
 		// This may happen if a rule was deleted during, other processing, like the DNS lookups
 		if !ok {
 			notFoundUUIDs = append(notFoundUUIDs, uuid)
 			continue
 		}
 
-		sourceRules = append(sourceRules, rule)
+		sourceLabels = append(sourceLabels, lbls)
 	}
 
-	return sourceRules, notFoundUUIDs
+	return sourceLabels, notFoundUUIDs
 }
 
 // GenerateRulesFromSources creates new api.Rule instances with all ToFQDN
@@ -394,29 +374,11 @@ func (gen *RuleGen) GenerateRulesFromSources(sourceRules []*api.Rule) (generated
 // If newDNSNames and oldDNSNames are both empty, the rule was not added to the
 // managed list.
 func (gen *RuleGen) addRule(uuid string, sourceRule *api.Rule) (newDNSNames, oldDNSNames []string, err error) {
-	// if we are updating a rule, track which old dnsNames are removed. We store
-	// possible names to stop managing in namesToStopManaging. As we add names
-	// from the new rule below, these are cleared.
+	// FIXME: how to handle dns names that have been removed?
 	namesToStopManaging := make(map[string]struct{})
-	if oldRule, exists := gen.allRules[uuid]; exists {
-		for _, egressRule := range oldRule.Egress {
-			for _, ToFQDN := range egressRule.ToFQDNs {
-				if len(ToFQDN.MatchName) > 0 {
-					dnsName := prepareMatchName(ToFQDN.MatchName)
-					dnsNameAsRE := matchpattern.ToRegexp(dnsName)
-					namesToStopManaging[dnsNameAsRE] = struct{}{}
-				}
-				if len(ToFQDN.MatchPattern) > 0 {
-					dnsPattern := matchpattern.Sanitize(ToFQDN.MatchPattern)
-					dnsPatternAsRE := matchpattern.ToRegexp(dnsPattern)
-					namesToStopManaging[dnsPatternAsRE] = struct{}{}
-				}
-			}
-		}
-	}
 
 	// Always add to allRules
-	gen.allRules[uuid] = sourceRule
+	gen.allRules[uuid] = sourceRule.Labels
 
 	// Add a dnsname -> rule reference. We track old/new names by the literal
 	// value in matchName/Pattern. They are inserted into the sourceRules

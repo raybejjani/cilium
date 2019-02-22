@@ -34,18 +34,19 @@ import (
 	"github.com/cilium/cilium/pkg/fqdn/matchpattern"
 	secIDCache "github.com/cilium/cilium/pkg/identity/cache"
 	"github.com/cilium/cilium/pkg/ipcache"
+	"github.com/cilium/cilium/pkg/labels"
 	"github.com/cilium/cilium/pkg/logging/logfields"
 	"github.com/cilium/cilium/pkg/metrics"
 	"github.com/cilium/cilium/pkg/node"
 	"github.com/cilium/cilium/pkg/option"
-	policyApi "github.com/cilium/cilium/pkg/policy/api"
+	policyAPI "github.com/cilium/cilium/pkg/policy/api"
 	"github.com/cilium/cilium/pkg/proxy"
 	"github.com/cilium/cilium/pkg/proxy/accesslog"
 	"github.com/cilium/cilium/pkg/proxy/logger"
 	"github.com/cilium/cilium/pkg/u8proto"
+
 	"github.com/go-openapi/runtime/middleware"
 	"github.com/go-openapi/strfmt"
-
 	"github.com/miekg/dns"
 )
 
@@ -69,11 +70,28 @@ func (d *Daemon) bootstrapFQDN(restoredEndpoints *endpointRestoreState, preCache
 		MinTTL:         option.Config.ToFQDNsMinTTL,
 		Cache:          fqdn.DefaultDNSCache,
 		LookupDNSNames: fqdn.DNSLookupDefaultResolver,
-		AddGeneratedRules: func(generatedRules []*policyApi.Rule) error {
-			// Insert the new rules into the policy repository. We need them to
-			// replace the previous set. This requires the labels to match (including
-			// the ToFQDN-UUID one).
-			_, err := d.PolicyAdd(generatedRules, &AddOptions{Replace: true, Generated: true})
+		AddGeneratedRules: func(labelsToRegenerate []labels.LabelArray) error {
+			var (
+				err               error
+				rulesToRegenerate []*policyAPI.Rule
+				deadline          = time.Now().Add(time.Second)
+			)
+
+			for (err == nil || err == policyAddBadRevision) && time.Now().Before(deadline) {
+				d.policy.Mutex.RLock()
+				oldRev := d.policy.GetRevision()
+				for _, lbls := range labelsToRegenerate {
+					rulesToRegenerate = append(rulesToRegenerate, d.policy.SearchRLocked(lbls)...)
+				}
+				d.policy.Mutex.RUnlock()
+
+				// re-insert the rules into the policy repository. They will replace
+				// themselves because the labels are the same.
+				_, err = d.PolicyAdd(rulesToRegenerate, &AddOptions{Replace: true, Generated: true, ExpectedRevision: oldRev})
+				if err == nil {
+					break
+				}
+			}
 			return err
 		},
 		PollerResponseNotify: func(lookupTime time.Time, qname string, response *fqdn.DNSIPRecords) {

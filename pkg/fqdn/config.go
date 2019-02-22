@@ -17,7 +17,7 @@ package fqdn
 import (
 	"time"
 
-	"github.com/cilium/cilium/pkg/policy/api"
+	"github.com/cilium/cilium/pkg/labels"
 	"github.com/miekg/dns"
 )
 
@@ -44,7 +44,7 @@ type Config struct {
 
 	// AddGeneratedRules is a callback  to emit generated rules.
 	// When set to nil, it is a no-op.
-	AddGeneratedRules func([]*api.Rule) error
+	AddGeneratedRules func([]labels.LabelArray) error
 
 	// PollerResponseNotify is used when the poller recieves DNS data in response
 	// to a successful poll.
