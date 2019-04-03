@@ -30,6 +30,9 @@ type Config struct {
 	// When set to 0, 2*DNSPollerInterval is used.
 	MinTTL int
 
+	// MaxIPsPerHost is the upper bound on IPs per DNS name allowed.
+	MaxIPsPerHost int
+
 	// Cache is where the poller stores DNS data used to generate rules.
 	// When set to nil, it uses fqdn.DefaultDNSCache, a global cache instance.
 	Cache *DNSCache

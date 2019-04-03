@@ -60,6 +60,8 @@ type DNSPoller struct {
 	// config is a copy from when this instance was initialized.
 	// It is read-only once set
 	config Config
+
+	DNSHistory *DNSCache
 }
 
 // NewDNSPoller creates an initialized DNSPoller. It does not start the controller (use .Start)
@@ -76,9 +78,17 @@ func NewDNSPoller(config Config, ruleManager *RuleGen) *DNSPoller {
 		config.PollerResponseNotify = noopPollerResponseNotify
 	}
 
+	var historyCache *DNSCache
+	if config.MaxIPsPerHost != 0 {
+		historyCache = NewDNSCacheWithLimit(config.MaxIPsPerHost)
+	} else {
+		historyCache = NewDNSCache()
+	}
+
 	return &DNSPoller{
 		config:      config,
 		ruleManager: ruleManager,
+		DNSHistory:  historyCache,
 	}
 }
 
@@ -103,6 +113,11 @@ func (poller *DNSPoller) LookupUpdateDNS(ctx context.Context) error {
 			Warn("Cannot resolve FQDN. Traffic egressing to this destination may be incorrectly dropped due to stale data.")
 	}
 	for qname, response := range updatedDNSIPs {
+		ttl := response.TTL
+		if ttl < poller.config.MinTTL {
+			ttl = poller.config.MinTTL
+		}
+		poller.DNSHistory.Update(lookupTime, qname, response.IPs, ttl)
 		poller.config.PollerResponseNotify(lookupTime, qname, response)
 	}
 

@@ -69,6 +69,7 @@ const (
 func (d *Daemon) bootstrapFQDN(restoredEndpoints *endpointRestoreState, preCachePath string) (err error) {
 	cfg := fqdn.Config{
 		MinTTL:         option.Config.ToFQDNsMinTTL,
+		MaxIPsPerHost:  option.Config.ToFQDNsMaxIPsPerHost,
 		Cache:          fqdn.DefaultDNSCache,
 		LookupDNSNames: fqdn.DNSLookupDefaultResolver,
 		AddGeneratedRules: func(generatedRules []*policyApi.Rule) error {
@@ -149,6 +150,7 @@ func (d *Daemon) bootstrapFQDN(restoredEndpoints *endpointRestoreState, preCache
 			for _, ep := range endpoints {
 				namesToClean = append(namesToClean, ep.DNSHistory.GC()...)
 			}
+			namesToClean = append(namesToClean, d.dnsPoller.DNSHistory.GC()...)
 
 			namesToClean = fqdn.KeepUniqueNames(namesToClean)
 			if len(namesToClean) == 0 {
@@ -167,6 +169,7 @@ func (d *Daemon) bootstrapFQDN(restoredEndpoints *endpointRestoreState, preCache
 			for _, ep := range endpoints {
 				cfg.Cache.UpdateFromCache(ep.DNSHistory, namesToClean)
 			}
+			cfg.Cache.UpdateFromCache(d.dnsPoller.DNSHistory, namesToClean)
 
 			metrics.FQDNGarbageCollectorCleanedTotal.Add(float64(len(namesToClean)))
 			log.WithField(logfields.Controller, dnsGCJobName).Infof(
@@ -402,7 +405,7 @@ func (h *getFqdnCache) Handle(params GetFqdnCacheParams) middleware.Responder {
 		matchPatternStr = *params.Matchpattern
 	}
 
-	lookups, err := extractDNSLookups(endpoints, CIDRStr, matchPatternStr)
+	lookups, err := extractDNSLookups(endpoints, h.daemon.dnsPoller.DNSHistory, CIDRStr, matchPatternStr)
 	switch {
 	case err != nil:
 		return api.Error(GetFqdnCacheBadRequestCode, err)
@@ -470,7 +473,7 @@ func (h *getFqdnCacheID) Handle(params GetFqdnCacheIDParams) middleware.Responde
 		matchPatternStr = *params.Matchpattern
 	}
 
-	lookups, err := extractDNSLookups(endpoints, CIDRStr, matchPatternStr)
+	lookups, err := extractDNSLookups(endpoints, h.daemon.dnsPoller.DNSHistory, CIDRStr, matchPatternStr)
 	switch {
 	case err != nil:
 		return api.Error(GetFqdnCacheBadRequestCode, err)
@@ -484,7 +487,7 @@ func (h *getFqdnCacheID) Handle(params GetFqdnCacheIDParams) middleware.Responde
 // extractDNSLookups returns API models.DNSLookup copies of DNS data in each
 // endpoint's DNSHistory. These are filtered by CIDRStr and matchPatternStr if
 // they are non-empty.
-func extractDNSLookups(endpoints []*endpoint.Endpoint, CIDRStr, matchPatternStr string) (lookups []*models.DNSLookup, err error) {
+func extractDNSLookups(endpoints []*endpoint.Endpoint, pollerHistory *fqdn.DNSCache, CIDRStr, matchPatternStr string) (lookups []*models.DNSLookup, err error) {
 	cidrMatcher := func(ip net.IP) bool { return true }
 	if CIDRStr != "" {
 		_, cidr, err := net.ParseCIDR(CIDRStr)
@@ -503,8 +506,15 @@ func extractDNSLookups(endpoints []*endpoint.Endpoint, CIDRStr, matchPatternStr 
 		nameMatcher = func(name string) bool { return matcher.MatchString(name) }
 	}
 
+	// collect EP DNS data and poller DNS data
+	histories := make(map[int64]*fqdn.DNSCache)
 	for _, ep := range endpoints {
-		for _, lookup := range ep.DNSHistory.Dump() {
+		histories[int64(ep.ID)] = ep.DNSHistory
+	}
+	histories[-1] = pollerHistory
+
+	for id, history := range histories {
+		for _, lookup := range history.Dump() {
 			if !nameMatcher(lookup.Name) {
 				continue
 			}
@@ -528,7 +538,7 @@ func extractDNSLookups(endpoints []*endpoint.Endpoint, CIDRStr, matchPatternStr 
 				LookupTime:     strfmt.DateTime(lookup.LookupTime),
 				TTL:            int64(lookup.TTL),
 				ExpirationTime: strfmt.DateTime(lookup.ExpirationTime),
-				EndpointID:     int64(ep.ID),
+				EndpointID:     id,
 			})
 		}
 	}
