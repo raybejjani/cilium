@@ -217,7 +217,7 @@ spec:
               optional: true
         - name: CILIUM_CLUSTERMESH_CONFIG
           value: /var/lib/cilium/clustermesh/
-        image: docker.io/cilium/cilium:latest
+        image: docker.io/raycovalent/cilium:etcd-proxy
         imagePullPolicy: Always
         lifecycle:
           postStart:
@@ -809,7 +809,7 @@ spec:
           value: "revision"
         - name: CILIUM_ETCD_META_ETCD_AUTO_COMPACTION_RETENTION
           value: "25000"
-        image: docker.io/cilium/cilium-etcd-operator:v2.0.6
+        image: docker.io/raycovalent/cilium-etcd-operator:etcd-proxy
         imagePullPolicy: IfNotPresent
         name: cilium-etcd-operator
       dnsPolicy: ClusterFirst

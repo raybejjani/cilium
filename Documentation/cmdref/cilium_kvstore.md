@@ -30,4 +30,5 @@ Direct access to the kvstore
 * [cilium kvstore delete](../cilium_kvstore_delete)	 - Delete a key
 * [cilium kvstore get](../cilium_kvstore_get)	 - Retrieve a key
 * [cilium kvstore set](../cilium_kvstore_set)	 - Set a key and value
+* [cilium kvstore test](../cilium_kvstore_test)	 - Test propagation delay
 
