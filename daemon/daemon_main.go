@@ -898,6 +898,21 @@ func init() {
 }
 
 func initEnv(cmd *cobra.Command) {
+	//deadline := time.Now().Add(15 * time.Second)
+	//for true {
+	//	time.Sleep(time.Second)
+	//	if _, err := os.Stat("/var/run/cilium/cni-install.lock"); os.IsNotExist(err) {
+	//		break
+	//	}
+	//	if time.Now().After(deadline) {
+	//		break
+	//	}
+	//}
+	go func() {
+		time.Sleep(15 * time.Second)
+		os.Exit(-40)
+	}()
+
 	// Prepopulate option.Config with options from CLI.
 	option.Config.Populate()
 

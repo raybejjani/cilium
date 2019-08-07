@@ -34,7 +34,7 @@ const (
 	Syslog = "syslog"
 
 	// fatalDelay is an optional delay introduced when calling Fatal to exit
-	fatalDelay = 10 * time.Second
+	fatalDelay = 40 * time.Second
 )
 
 var (
@@ -81,6 +81,15 @@ func InitializeDefaultLogger() *logrus.Logger {
 	logger := logrus.New()
 	logger.Formatter = setupFormatter()
 	logger.SetLevel(LevelStringToLogrusLevel[DefaultLogLevelStr])
+
+	logrus.RegisterExitHandler(func() { time.Sleep(fatalDelay) })
+
+	exit := logger.ExitFunc
+	logger.ExitFunc = func(e int) {
+		time.Sleep(10 * time.Second)
+		exit(e)
+	}
+
 	return logger
 }
 

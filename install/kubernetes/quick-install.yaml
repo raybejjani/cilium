@@ -339,7 +339,6 @@ spec:
     spec:
       containers:
       - args:
-        - --flarg
         - --config-dir=/tmp/cilium/config-map
         command:
         - cilium-agent
