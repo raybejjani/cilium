@@ -888,6 +888,15 @@ func initConfig() {
 	}
 }
 
+func init() {
+	logrus.RegisterExitHandler(func() { time.Sleep(10 * time.Second) })
+	exit := logging.DefaultLogger.ExitFunc
+	logging.DefaultLogger.ExitFunc = func(e int) {
+		time.Sleep(10 * time.Second)
+		exit(e)
+	}
+}
+
 func initEnv(cmd *cobra.Command) {
 	// Prepopulate option.Config with options from CLI.
 	option.Config.Populate()
@@ -896,7 +905,7 @@ func initEnv(cmd *cobra.Command) {
 	logging.DefaultLogger.Hooks.Add(metrics.NewLoggingHook(components.CiliumAgentName))
 
 	// Logging should always be bootstrapped first. Do not add any code above this!
-	logging.SetupLogging(option.Config.LogDriver, option.Config.LogOpt, "cilium-agent", option.Config.Debug)
+	logging.SetupLogging(option.Config.LogDriver, option.Config.LogOpt, "cilium-agent", option.Config.Debug, k8s.IsEnabled())
 
 	if option.Config.CMDRefDir != "" {
 		genMarkdown(cmd)

@@ -181,7 +181,7 @@ func kvstoreEnabled() bool {
 }
 
 func runOperator(cmd *cobra.Command) {
-	logging.SetupLogging([]string{}, map[string]string{}, "cilium-operator", viper.GetBool("debug"))
+	logging.SetupLogging([]string{}, map[string]string{}, "cilium-operator", viper.GetBool("debug"), false)
 
 	log.Infof("Cilium Operator %s", version.Version)
 	k8sInitDone := make(chan struct{})

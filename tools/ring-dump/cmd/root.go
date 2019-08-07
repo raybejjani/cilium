@@ -128,7 +128,7 @@ func getBytes(raw string) []byte {
 
 func run(cmd *cobra.Command, args []string) {
 	// Logging should always be bootstrapped first. Do not add any code above this!
-	logging.SetupLogging(viper.GetStringSlice("log-driver"), logOpts, targetName, viper.GetBool("debug"))
+	logging.SetupLogging(viper.GetStringSlice("log-driver"), logOpts, targetName, viper.GetBool("debug"), false)
 
 	if len(args) < 1 {
 		Fatalf("path to ringbuffer dump file must be specified")

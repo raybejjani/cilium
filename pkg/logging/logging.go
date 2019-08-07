@@ -32,6 +32,9 @@ const (
 	SLevel = "syslog.level"
 
 	Syslog = "syslog"
+
+	// fatalDelay is an optional delay introduced when calling Fatal to exit
+	fatalDelay = 10 * time.Second
 )
 
 var (
@@ -83,7 +86,9 @@ func InitializeDefaultLogger() *logrus.Logger {
 
 // SetupLogging sets up each logging service provided in loggers and configures
 // each logger with the provided logOpts.
-func SetupLogging(loggers []string, logOpts map[string]string, tag string, debug bool) error {
+// delaynFatal introduces a delay when Fatal is called. This is useful when
+// running in k8s and we need to exit slower than the cni-install script.
+func SetupLogging(loggers []string, logOpts map[string]string, tag string, debug, delayOnFatal bool) error {
 	// Set default logger to output to stdout if no loggers are provided.
 	if len(loggers) == 0 {
 		// TODO: switch to a per-logger version when we upgrade to logrus >1.0.3
@@ -110,6 +115,10 @@ func SetupLogging(loggers []string, logOpts map[string]string, tag string, debug
 			return fmt.Errorf("provided log driver %q is not a supported log driver", logger)
 		}
 	}
+
+	//if delayOnFatal {
+	//	logrus.RegisterExitHandler(func() { time.Sleep(fatalDelay) })
+	//}
 
 	return nil
 }
