@@ -908,10 +908,10 @@ func initEnv(cmd *cobra.Command) {
 	//		break
 	//	}
 	//}
-	go func() {
-		time.Sleep(15 * time.Second)
-		os.Exit(-40)
-	}()
+	//go func() {
+	//	time.Sleep(1 * time.Second)
+	//	log.Fatal("FML I Quit")
+	//}()
 
 	// Prepopulate option.Config with options from CLI.
 	option.Config.Populate()

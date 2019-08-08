@@ -2,13 +2,6 @@
 
 set -e
 
-touch /var/run/cilium/cni-install.lock
-function finish {
-  rm -f /var/run/cilium/cni-install.lock
-}
-trap finish EXIT
-
-
 # Backwards compatibility
 if [ ! -z "${CILIUM_FLANNEL_MASTER_DEVICE}" ]; then
 	CILIUM_CNI_CHAINING_MODE="flannel"
