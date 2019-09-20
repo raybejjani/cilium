@@ -124,7 +124,9 @@ func (d *Daemon) updateSelectorCacheFQDNs(selectors map[policyApi.FQDNSelector][
 	if len(selectors) == 0 && len(selectorsWithoutIPs) == 0 {
 		return &sync.WaitGroup{}
 	}
-	return d.endpointManager.UpdatePolicyMaps()
+	ctx, cancel := context.WithTimeout(context.TODO(), option.Config.FQDNProxyResponseMaxDelay)
+	defer cancel()
+	return d.endpointManager.UpdatePolicyMaps(ctx)
 }
 
 // bootstrapFQDN initializes the toFQDNs related subsystems: DNSPoller,

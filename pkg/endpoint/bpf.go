@@ -889,12 +889,35 @@ func (e *Endpoint) addPolicyKey(keyToAdd policy.Key, entry policy.MapStateEntry,
 // ApplyPolicyMapChanges updates the Endpoint's PolicyMap with the changes
 // that have accumulated for the PolicyMap via various outside events (e.g.,
 // identities added / deleted).
-func (e *Endpoint) ApplyPolicyMapChanges() error {
+func (e *Endpoint) ApplyPolicyMapChanges(ctx context.Context) error {
 	if err := e.lockAlive(); err != nil {
 		return err
 	}
 	defer e.unlock()
-	return e.applyPolicyMapChanges()
+	if err := e.applyPolicyMapChanges(); err != nil {
+		return err
+	}
+
+	proxyWaitGroup := completion.NewWaitGroup(ctx)
+	err, revert := e.proxy.UpdateNetworkPolicy(e, e.desiredPolicy.L4Policy, e.desiredPolicy.IngressPolicyEnabled, e.desiredPolicy.EgressPolicyEnabled, proxyWaitGroup)
+	if err != nil {
+		revert()
+		return err
+	}
+
+	updateComplete := make(chan struct{})
+	go func(wg *completion.WaitGroup, done chan struct{}) {
+		proxyWaitGroup.Wait()
+		close(updateComplete)
+	}(proxyWaitGroup, updateComplete)
+
+	select {
+	case <-ctx.Done():
+		log.Error("Timed out waiting for datapath updates of FQDN IP information; returning response")
+	case <-updateComplete:
+	}
+
+	return nil
 }
 
 // applyPolicyMapChanges applies any incremental policy map changes

@@ -76,7 +76,7 @@ func NewEndpointManager(epSynchronizer EndpointResourceSynchronizer) *EndpointMa
 
 // UpdatePolicyMaps returns a WaitGroup which is signaled upon once all endpoints
 // have had their PolicyMaps updated against the Endpoint's desired policy state.
-func (mgr *EndpointManager) UpdatePolicyMaps() *sync.WaitGroup {
+func (mgr *EndpointManager) UpdatePolicyMaps(ctx context.Context) *sync.WaitGroup {
 	var wg sync.WaitGroup
 
 	eps := mgr.GetEndpoints()
@@ -85,7 +85,7 @@ func (mgr *EndpointManager) UpdatePolicyMaps() *sync.WaitGroup {
 	// TODO: bound by number of CPUs?
 	for _, ep := range eps {
 		go func(ep *endpoint.Endpoint) {
-			if err := ep.ApplyPolicyMapChanges(); err != nil {
+			if err := ep.ApplyPolicyMapChanges(ctx); err != nil {
 				ep.Logger("endpointmanager").Warning("Failed to apply policy map changes. These will be re-applied in future updates.")
 			}
 			wg.Done()
