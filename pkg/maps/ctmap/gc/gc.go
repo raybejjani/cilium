@@ -16,6 +16,7 @@ package gc
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"time"
 
@@ -50,19 +51,31 @@ func Enable(ipv4, ipv6 bool, restoredEndpoints []*endpoint.Endpoint, mgr Endpoin
 		ipv4Orig := ipv4
 		ipv6Orig := ipv6
 		for {
-			var maxDeleteRatio float64
+			var (
+				maxDeleteRatio float64
+				connections    = make(map[string][]string)
+				matchCB        = func(srcIP net.IP, dstIP net.IP, dstPort uint16, entry *ctmap.CtEntry) bool {
+					connections[srcIP.String()] = append(connections[srcIP.String()], dstIP.String())
+					return true
+				}
+			)
 
 			eps := mgr.GetEndpoints()
 			if len(eps) > 0 || initialScan {
-				mapType, maxDeleteRatio = runGC(nil, ipv4, ipv6, createGCFilter(initialScan, restoredEndpoints))
+				mapType, maxDeleteRatio = runGC(nil, ipv4, ipv6, createGCFilter(initialScan, restoredEndpoints, matchCB))
 			}
 			for _, e := range eps {
 				if !e.ConntrackLocal() {
 					// Skip because GC was handled above.
 					continue
 				}
-				runGC(e, ipv4, ipv6, &ctmap.GCFilter{RemoveExpired: true})
+				runGC(e, ipv4, ipv6, &ctmap.GCFilter{
+					RemoveExpired: true,
+					MatchCB:       matchCB,
+				})
 			}
+
+			updateEPDNSCT(connections, mgr)
 
 			if initialScan {
 				close(initialScanComplete)
@@ -105,6 +118,20 @@ func Enable(ipv4, ipv6 bool, restoredEndpoints []*endpoint.Endpoint, mgr Endpoin
 		log.Info("Initial scan of connection tracking completed")
 	case <-time.After(30 * time.Second):
 		log.Fatal("Timeout while waiting for initial conntrack scan")
+	}
+}
+
+func updateEPDNSCT(connections map[string][]string, mgr EndpointManager) {
+	// TODO: Unique the destination IPs!
+	for epIP, dstIPs := range connections {
+		ep := mgr.LookupIP(net.ParseIP(epIP))
+
+		// Skip if we cannot find the endpoint. This can happen if it has been
+		// deleted or if we, somehow, process an ingress connection here.
+		if ep == nil {
+			continue
+		}
+		ep.SetDNSConnections(dstIPs)
 	}
 }
 
@@ -163,9 +190,10 @@ func runGC(e *endpoint.Endpoint, ipv4, ipv6 bool, filter *ctmap.GCFilter) (mapTy
 	return
 }
 
-func createGCFilter(initialScan bool, restoredEndpoints []*endpoint.Endpoint) *ctmap.GCFilter {
+func createGCFilter(initialScan bool, restoredEndpoints []*endpoint.Endpoint, MatchCB ctmap.MatchCBFunc) *ctmap.GCFilter {
 	filter := &ctmap.GCFilter{
 		RemoveExpired: true,
+		MatchCB:       MatchCB,
 	}
 
 	// On the initial scan, scrub all IPs from the conntrack table which do

@@ -252,6 +252,7 @@ func (e *Endpoint) toSerializedEndpoint() *serializableEndpoint {
 		SecurityIdentity:      e.SecurityIdentity,
 		Options:               e.Options,
 		DNSHistory:            e.DNSHistory,
+		DnsConnections:        e.dnsConnections,
 		K8sPodName:            e.K8sPodName,
 		K8sNamespace:          e.K8sNamespace,
 		DatapathConfiguration: e.DatapathConfiguration,
@@ -327,6 +328,8 @@ type serializableEndpoint struct {
 	// this endpoint.
 	DNSHistory *fqdn.DNSCache
 
+	DnsConnections map[string]struct{}
+
 	// K8sPodName is the Kubernetes pod name of the endpoint
 	K8sPodName string
 
@@ -378,6 +381,7 @@ func (ep *Endpoint) fromSerializedEndpoint(r *serializableEndpoint) {
 	ep.nodeMAC = r.NodeMAC
 	ep.SecurityIdentity = r.SecurityIdentity
 	ep.DNSHistory = r.DNSHistory
+	ep.dnsConnections = r.DnsConnections
 	ep.K8sPodName = r.K8sPodName
 	ep.K8sNamespace = r.K8sNamespace
 	ep.DatapathConfiguration = r.DatapathConfiguration

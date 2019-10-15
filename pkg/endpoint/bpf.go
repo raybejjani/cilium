@@ -30,6 +30,8 @@ import (
 	"github.com/cilium/cilium/pkg/completion"
 	"github.com/cilium/cilium/pkg/controller"
 	"github.com/cilium/cilium/pkg/endpoint/regeneration"
+	"github.com/cilium/cilium/pkg/identity"
+	"github.com/cilium/cilium/pkg/ipcache"
 	"github.com/cilium/cilium/pkg/loadinfo"
 	"github.com/cilium/cilium/pkg/logging/logfields"
 	"github.com/cilium/cilium/pkg/maps/ctmap"
@@ -1069,7 +1071,14 @@ func (e *Endpoint) applyPolicyMapChanges() (proxyChanges bool, err error) {
 		}
 	}
 
-	for keyToDelete := range deletes {
+	for keyToDelete, entry := range deletes {
+		if e.isDNSConnection(&keyToDelete, &entry) {
+			log.Debugf("FML supressing delete of %v:%v", keyToDelete, entry)
+			if !e.addPolicyKey(keyToDelete, entry, true) {
+				errors++
+			}
+			continue
+		}
 		if !e.deletePolicyKey(keyToDelete, true, &proxyChanges) {
 			errors++
 		}
@@ -1085,6 +1094,17 @@ func (e *Endpoint) applyPolicyMapChanges() (proxyChanges bool, err error) {
 	}
 
 	return proxyChanges, nil
+}
+
+func (e *Endpoint) isDNSConnection(k *policy.Key, entry *policy.MapStateEntry) bool {
+	ips, _ := ipcache.IPIdentityCache.LookupByIdentity(identity.NumericIdentity(k.Identity))
+	for ip := range ips {
+		_, found := e.dnsConnections[ip]
+		if found {
+			return true
+		}
+	}
+	return false
 }
 
 // syncPolicyMap updates the bpf policy map state based on the

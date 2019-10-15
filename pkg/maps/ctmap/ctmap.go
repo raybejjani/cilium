@@ -222,6 +222,7 @@ type GCFilter struct {
 }
 
 type MatchCBFunc func(srcIP net.IP, dstIP net.IP, dstPort uint16, entry *CtEntry) bool
+
 // ToString iterates through Map m and writes the values of the ct entries in m
 // to a string.
 func (m *Map) DumpEntries() (string, error) {

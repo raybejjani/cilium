@@ -190,6 +190,8 @@ type Endpoint struct {
 	// this endpoint.
 	DNSHistory *fqdn.DNSCache
 
+	dnsConnections map[string]struct{}
+
 	// dnsHistoryTrigger is the trigger to write down the lxc_config.h to make
 	// sure that restores when DNS policy is in there are correct
 	dnsHistoryTrigger *trigger.Trigger
@@ -386,6 +388,7 @@ func NewEndpointWithState(owner regeneration.Owner, proxy EndpointProxy, allocat
 		OpLabels:        pkgLabels.NewOpLabels(),
 		status:          NewEndpointStatus(),
 		DNSHistory:      fqdn.NewDNSCacheWithLimit(option.Config.ToFQDNsMinTTL, option.Config.ToFQDNsMaxIPsPerHost),
+		dnsConnections:  make(map[string]struct{}),
 		state:           state,
 		hasBPFProgram:   make(chan struct{}, 0),
 		controllers:     controller.NewManager(),
@@ -2181,4 +2184,17 @@ func (e *Endpoint) setDefaultPolicyConfig() {
 	alwaysEnforce := policy.GetPolicyEnabled() == option.AlwaysEnforce
 	e.desiredPolicy.IngressPolicyEnabled = alwaysEnforce
 	e.desiredPolicy.EgressPolicyEnabled = alwaysEnforce
+}
+
+func (e *Endpoint) SetDNSConnections(connections []string) error {
+	if err := e.lockAlive(); err != nil {
+		return err
+	}
+	defer e.unlock()
+
+	e.dnsConnections = make(map[string]struct{})
+	for _, ip := range connections {
+		e.dnsConnections[ip] = struct{}{}
+	}
+	return nil
 }
