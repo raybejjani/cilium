@@ -215,8 +215,13 @@ type GCFilter struct {
 
 	// MatchIPs is the list of IPs to remove from the conntrack table
 	MatchIPs map[string]struct{}
+
+	// MatchCB is called, when non-nil, if filtering by ValidIPs and MatchIPs
+	// passes. Returning true keeps the CT entry, and false deletes it.
+	MatchCB MatchCBFunc
 }
 
+type MatchCBFunc func(srcIP net.IP, dstIP net.IP, dstPort uint16, entry *CtEntry) bool
 // ToString iterates through Map m and writes the values of the ct entries in m
 // to a string.
 func (m *Map) DumpEntries() (string, error) {
@@ -423,6 +428,10 @@ func (f *GCFilter) doFiltering(srcIP net.IP, dstIP net.IP, dstPort uint16, nextH
 		if srcIPExists || dstIPExists {
 			return deleteEntry
 		}
+	}
+
+	if f.MatchCB != nil && !f.MatchCB(srcIP, dstIP, dstPort, entry) {
+		return deleteEntry
 	}
 
 	return noAction
