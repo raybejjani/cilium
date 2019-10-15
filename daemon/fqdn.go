@@ -154,7 +154,8 @@ func (d *Daemon) bootstrapFQDN(restoredEndpoints *endpointRestoreState, preCache
 	// Controller to cleanup TTL expired entries from the DNS policies.
 	dnsGCJobName := "dns-garbage-collector-job"
 	controller.NewManager().UpdateController(dnsGCJobName, controller.ControllerParams{
-		RunInterval: 1 * time.Minute,
+		//RunInterval: 1 * time.Minute,
+		RunInterval: 5 * time.Second,
 		DoFunc: func(ctx context.Context) error {
 
 			namesToClean := []string{}

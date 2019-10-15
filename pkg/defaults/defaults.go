@@ -202,7 +202,7 @@ const (
 	ConntrackGCMaxLRUInterval = 12 * time.Hour
 
 	// ConntrackGCMaxInterval is the maximum conntrack GC interval for non-LRU maps
-	ConntrackGCMaxInterval = 30 * time.Minute
+	ConntrackGCMaxInterval = 30 * time.Second //30 * time.Minute
 
 	// ConntrackGCMinInterval is the minimum conntrack GC interval
 	ConntrackGCMinInterval = 10 * time.Second
