@@ -667,6 +667,7 @@ func extractDNSLookups(endpoints []*endpoint.Endpoint, CIDRStr, matchPatternStr 
 	}
 
 	for _, ep := range endpoints {
+		// TODO: Include toDelete entries here?
 		for _, lookup := range ep.DNSHistory.Dump() {
 			if !nameMatcher(lookup.Name) {
 				continue
@@ -692,6 +693,7 @@ func extractDNSLookups(endpoints []*endpoint.Endpoint, CIDRStr, matchPatternStr 
 				TTL:            int64(lookup.TTL),
 				ExpirationTime: strfmt.DateTime(lookup.ExpirationTime),
 				EndpointID:     int64(ep.ID),
+				Source:         name,
 			})
 		}
 	}
