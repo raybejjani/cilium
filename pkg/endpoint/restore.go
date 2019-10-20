@@ -252,6 +252,7 @@ func (e *Endpoint) toSerializedEndpoint() *serializableEndpoint {
 		SecurityIdentity:      e.SecurityIdentity,
 		Options:               e.Options,
 		DNSHistory:            e.DNSHistory,
+		DNSDeletes:            e.DNSDeletes,
 		K8sPodName:            e.K8sPodName,
 		K8sNamespace:          e.K8sNamespace,
 		DatapathConfiguration: e.DatapathConfiguration,
@@ -323,9 +324,12 @@ type serializableEndpoint struct {
 
 	// Options determine the datapath configuration of the endpoint.
 	Options *option.IntOptions
+
 	// DNSHistory is the collection of still-valid DNS responses intercepted for
 	// this endpoint.
 	DNSHistory *fqdn.DNSCache
+
+	DNSDeletes *DNSDeletes
 
 	// K8sPodName is the Kubernetes pod name of the endpoint
 	K8sPodName string
@@ -348,6 +352,7 @@ func (ep *Endpoint) UnmarshalJSON(raw []byte) error {
 	restoredEp := &serializableEndpoint{
 		OpLabels:   labels.NewOpLabels(),
 		DNSHistory: fqdn.NewDNSCacheWithLimit(option.Config.ToFQDNsMinTTL, option.Config.ToFQDNsMaxIPsPerHost),
+		DNSDeletes: &DNSDeletes{},
 	}
 	if err := json.Unmarshal(raw, restoredEp); err != nil {
 		return fmt.Errorf("error unmarshaling serializableEndpoint from base64 representation: %s", err)
@@ -378,6 +383,7 @@ func (ep *Endpoint) fromSerializedEndpoint(r *serializableEndpoint) {
 	ep.nodeMAC = r.NodeMAC
 	ep.SecurityIdentity = r.SecurityIdentity
 	ep.DNSHistory = r.DNSHistory
+	ep.DNSDeletes = r.DNSDeletes
 	ep.K8sPodName = r.K8sPodName
 	ep.K8sNamespace = r.K8sNamespace
 	ep.DatapathConfiguration = r.DatapathConfiguration
