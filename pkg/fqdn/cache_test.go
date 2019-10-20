@@ -257,7 +257,7 @@ func (ds *DNSCacheTestSuite) TestJSONMarshal(c *C) {
 	// coupled with the implementation of DNSCache.MarshalJSON because the
 	// unmarshalled instance will hide duplicates. We simply check the length
 	// since we control the inserted data, and we test its correctness below.
-	rawList := make([]*cacheEntry, 0)
+	rawList := make([]*CacheEntry, 0)
 	err = json.Unmarshal(data, &rawList)
 	c.Assert(err, IsNil)
 	c.Assert(len(rawList), Equals, 6)
@@ -301,14 +301,14 @@ func makeIPs(count uint32) []net.IP {
 	return ips
 }
 
-func makeEntries(now time.Time, live, redundant, expired uint32) (entries []*cacheEntry) {
+func makeEntries(now time.Time, live, redundant, expired uint32) (entries []*CacheEntry) {
 	liveTTL := 120
 	redundantTTL := 60
 
 	for ; live > 0; live-- {
 		ip := net.IPv4(byte(live>>24), byte(live>>16), byte(live>>8), byte(live>>0))
 
-		entries = append(entries, &cacheEntry{
+		entries = append(entries, &CacheEntry{
 			Name:           fmt.Sprintf("live-%s", ip.String()),
 			LookupTime:     now,
 			ExpirationTime: now.Add(time.Duration(liveTTL) * time.Second),
@@ -317,7 +317,7 @@ func makeEntries(now time.Time, live, redundant, expired uint32) (entries []*cac
 
 		if redundant > 0 {
 			redundant--
-			entries = append(entries, &cacheEntry{
+			entries = append(entries, &CacheEntry{
 				Name:           fmt.Sprintf("redundant-%s", ip.String()),
 				LookupTime:     now,
 				ExpirationTime: now.Add(time.Duration(redundantTTL) * time.Second),
@@ -327,7 +327,7 @@ func makeEntries(now time.Time, live, redundant, expired uint32) (entries []*cac
 
 		if expired > 0 {
 			expired--
-			entries = append(entries, &cacheEntry{
+			entries = append(entries, &CacheEntry{
 				Name:           fmt.Sprintf("expired-%s", ip.String()),
 				LookupTime:     now.Add(-time.Duration(liveTTL) * time.Second),
 				ExpirationTime: now.Add(-time.Second),

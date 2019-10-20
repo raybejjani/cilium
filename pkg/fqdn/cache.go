@@ -26,16 +26,16 @@ import (
 	"github.com/cilium/cilium/pkg/lock"
 )
 
-// cacheEntry objects hold data passed in via DNSCache.Update, nominally
+// CacheEntry objects hold data passed in via DNSCache.Update, nominally
 // equating to a DNS lookup. They are internal to DNSCache and should not be
 // returned.
-// cacheEntry objects are immutable once created; the address of an instance is
+// CacheEntry objects are immutable once created; the address of an instance is
 // a unique identifier.
 // Note: the JSON names are intended to correlate to field names from
 // api/v1/models.DNSLookup to allow dumping the json from
 // `cilium fqdn cache list` to a file that can be unmarshalled via
 // `--tofqdns-per-cache`
-type cacheEntry struct {
+type CacheEntry struct {
 	// Name is a DNS name, it my be not fully qualified (e.g. myservice.namespace)
 	Name string `json:"fqdn,omitempty"`
 
@@ -50,30 +50,30 @@ type cacheEntry struct {
 	// valid.
 	TTL int `json:"ttl,omitempty"`
 
-	// IPs are the IPs associated with Name for this cacheEntry.
+	// IPs are the IPs associated with Name for this CacheEntry.
 	IPs []net.IP `json:"ips,omitempty"`
 }
 
 // isExpiredBy returns true if entry is no longer valid at pointInTime
-func (entry *cacheEntry) isExpiredBy(pointInTime time.Time) bool {
+func (entry *CacheEntry) isExpiredBy(pointInTime time.Time) bool {
 	return pointInTime.After(entry.ExpirationTime)
 }
 
-// ipEntries maps a unique IP to the cacheEntry that provides it in .IPs.
-// Multiple IPs may point to the same cacheEntry, or they may all be different.
-// Crucially, an IP may be present in a cacheEntry but the IP in ipEntries
-// points to another cacheEntry. This is because the second cacheEntry has a
+// ipEntries maps a unique IP to the CacheEntry that provides it in .IPs.
+// Multiple IPs may point to the same CacheEntry, or they may all be different.
+// Crucially, an IP may be present in a CacheEntry but the IP in ipEntries
+// points to another CacheEntry. This is because the second CacheEntry has a
 // later expiration for this specific IP, and may not include the other IPs
 // provided by the first entry.
 // The DNS name in the entries is not checked, but is assumed to be the same
 // for all entries.
 // Note: They are guarded by the DNSCache mutex.
-type ipEntries map[string]*cacheEntry
+type ipEntries map[string]*CacheEntry
 
 // nameEntries maps a DNS name to the cache entry that inserted it into the
 // cache. It used in reverse DNS lookups. It is similar to ipEntries, above,
 // but the key is a DNS name.
-type nameEntries map[string]*cacheEntry
+type nameEntries map[string]*CacheEntry
 
 // getIPs returns a sorted list of non-expired unique IPs.
 // This needs a read-lock
@@ -175,7 +175,7 @@ func (c *DNSCache) Update(lookupTime time.Time, name string, ips []net.IP, ttl i
 		ttl = c.minTTL
 	}
 
-	entry := &cacheEntry{
+	entry := &CacheEntry{
 		Name:           name,
 		LookupTime:     lookupTime,
 		ExpirationTime: lookupTime.Add(time.Duration(ttl) * time.Second),
@@ -188,15 +188,15 @@ func (c *DNSCache) Update(lookupTime time.Time, name string, ips []net.IP, ttl i
 	return c.updateWithEntry(entry)
 }
 
-// updateWithEntry implements the insertion of a cacheEntry. It is used by
+// updateWithEntry implements the insertion of a CacheEntry. It is used by
 // DNSCache.Update and DNSCache.UpdateWithEntry.
 // This needs a write lock
-func (c *DNSCache) updateWithEntry(entry *cacheEntry) bool {
+func (c *DNSCache) updateWithEntry(entry *CacheEntry) bool {
 	changed := false
 	entries, exists := c.forward[entry.Name]
 	if !exists {
 		changed = true
-		entries = make(map[string]*cacheEntry)
+		entries = make(map[string]*CacheEntry)
 		c.forward[entry.Name] = entries
 	}
 
@@ -219,7 +219,7 @@ func (c *DNSCache) updateWithEntry(entry *cacheEntry) bool {
 // AddNameToCleanup adds the IP with the given TTL to the the cleanup map to
 // delete the entry from the policy when it expires.
 // Need to be called with a write lock
-func (c *DNSCache) addNameToCleanup(entry *cacheEntry) {
+func (c *DNSCache) addNameToCleanup(entry *CacheEntry) {
 	if entry.ExpirationTime.Before(c.lastCleanup) {
 		// ExpirationTime can be before the lastCleanup don't add that value to
 		// prevent leaks on the map.
@@ -270,7 +270,7 @@ func (c *DNSCache) cleanupExpiredEntries(expires time.Time) ([]string, time.Time
 func (c *DNSCache) cleanupOverLimitEntries() []string {
 	type IPEntry struct {
 		ip    string
-		entry *cacheEntry
+		entry *CacheEntry
 	}
 	affectedNames := []string{}
 
@@ -425,10 +425,10 @@ func (c *DNSCache) lookupIPByTime(now time.Time, ip net.IP) (names []string) {
 }
 
 // updateWithEntryIPs adds a mapping for every IP found in `entry` to `ipEntries`
-// (which maps IP -> cacheEntry). It will replace existing IP->old mappings in
+// (which maps IP -> CacheEntry). It will replace existing IP->old mappings in
 // `entries` if the current entry expires sooner (or has already expired).
 // This needs a write lock
-func (c *DNSCache) updateWithEntryIPs(entries ipEntries, entry *cacheEntry) bool {
+func (c *DNSCache) updateWithEntryIPs(entries ipEntries, entry *CacheEntry) bool {
 	added := false
 	for _, ip := range entry.IPs {
 		ipStr := ip.String()
@@ -444,7 +444,7 @@ func (c *DNSCache) updateWithEntryIPs(entries ipEntries, entry *cacheEntry) bool
 
 }
 
-// removeExpired removes expired (or nil) cacheEntry pointers from entries, an
+// removeExpired removes expired (or nil) CacheEntry pointers from entries, an
 // ipEntries instance for a specific name. It returns a boolean if any entry is
 // removed.
 // now is the "current time" and entries with ExpirationTime before then are
@@ -470,10 +470,10 @@ func (c *DNSCache) removeExpired(entries ipEntries, now time.Time, expireLookups
 // later than the already-stored entry.
 // It is assumed that entry includes ip.
 // This needs a write lock
-func (c *DNSCache) upsertReverse(ip string, entry *cacheEntry) {
+func (c *DNSCache) upsertReverse(ip string, entry *CacheEntry) {
 	entries, exists := c.reverse[ip]
 	if entries == nil || !exists {
-		entries = make(map[string]*cacheEntry)
+		entries = make(map[string]*CacheEntry)
 		c.reverse[ip] = entries
 	}
 	entries[entry.Name] = entry
@@ -484,7 +484,7 @@ func (c *DNSCache) upsertReverse(ip string, entry *cacheEntry) {
 // outright.
 // It is assumed that entry includes ip.
 // This needs a write lock
-func (c *DNSCache) removeReverse(ip string, entry *cacheEntry) {
+func (c *DNSCache) removeReverse(ip string, entry *CacheEntry) {
 	entries, exists := c.reverse[ip]
 	if entries == nil || !exists {
 		return
@@ -551,14 +551,14 @@ func (c *DNSCache) ForceExpireByNames(expireLookupsBefore time.Time, names []str
 
 // Dump returns unexpired cache entries in the cache. They are deduplicated,
 // but not usefully sorted. These objects should not be modified.
-func (c *DNSCache) Dump() (lookups []*cacheEntry) {
+func (c *DNSCache) Dump() (lookups []*CacheEntry) {
 	c.RLock()
 	defer c.RUnlock()
 
 	now := time.Now()
 
 	// Collect all the still-valid entries
-	lookups = make([]*cacheEntry, 0, len(c.forward))
+	lookups = make([]*CacheEntry, 0, len(c.forward))
 	for _, entries := range c.forward {
 		for _, entry := range entries {
 			if !entry.isExpiredBy(now) {
@@ -601,7 +601,7 @@ func (c *DNSCache) MarshalJSON() ([]byte, error) {
 // Note: This is destructive to any currect data. Use UpdateFromCache for bulk
 // updates.
 func (c *DNSCache) UnmarshalJSON(raw []byte) error {
-	lookups := make([]*cacheEntry, 0)
+	lookups := make([]*CacheEntry, 0)
 	if err := json.Unmarshal(raw, &lookups); err != nil {
 		return err
 	}
