@@ -199,17 +199,17 @@ const (
 	K8sWatcherEndpointSelector = "metadata.name!=kube-scheduler,metadata.name!=kube-controller-manager,metadata.name!=etcd-operator,metadata.name!=gcp-controller-manager"
 
 	// ConntrackGCMaxLRUInterval is the maximum conntrack GC interval when using LRU maps
-	ConntrackGCMaxLRUInterval = 12 * time.Hour
+	ConntrackGCMaxLRUInterval = 30 * time.Second //12 * time.Hour
 
 	// ConntrackGCMaxInterval is the maximum conntrack GC interval for non-LRU maps
-	ConntrackGCMaxInterval = 30 * time.Minute
+	ConntrackGCMaxInterval = 30 * time.Second //30 * time.Minute
 
 	// ConntrackGCMinInterval is the minimum conntrack GC interval
 	ConntrackGCMinInterval = 10 * time.Second
 
 	// ConntrackGCStartingInterval is the default starting interval for
 	// connection tracking garbage collection
-	ConntrackGCStartingInterval = 5 * time.Minute
+	ConntrackGCStartingInterval = ConntrackGCMinInterval //5 * time.Minute
 
 	// PolicyMapEntries is the default number of entries allowed in an
 	// endpoint's policymap, ie the maximum number of peer identities that

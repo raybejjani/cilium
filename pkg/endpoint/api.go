@@ -81,7 +81,7 @@ func NewEndpointFromChangeModel(owner regeneration.Owner, proxy EndpointProxy, a
 		ifIndex:          int(base.InterfaceIndex),
 		OpLabels:         labels.NewOpLabels(),
 		DNSHistory:       fqdn.NewDNSCacheWithLimit(option.Config.ToFQDNsMinTTL, option.Config.ToFQDNsMaxIPsPerHost),
-		DNSDeletes:       &DNSDeletes{},
+		DNSDeletes:       NewDNSDeletes(),
 		state:            "",
 		status:           NewEndpointStatus(),
 		hasBPFProgram:    make(chan struct{}, 0),

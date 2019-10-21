@@ -206,7 +206,7 @@ func (c *DNSCache) updateWithEntry(entry *CacheEntry) bool {
 
 	// When lookupTime is much earlier than time.Now(), we may not expire all
 	// entries that should be expired, leaving more work for .Lookup.
-	if c.removeExpired(entries, time.Now(), time.Time{}) {
+	if len(c.removeExpired(entries, time.Now(), time.Time{})) > 0 {
 		changed = true
 	}
 
@@ -236,9 +236,9 @@ func (c *DNSCache) addNameToCleanup(entry *CacheEntry) {
 // cleanupExpiredEntries cleans all the expired entries from the lastTime that
 // runs to the give time. It will lock the struct until retrieves all the data.
 // It returns the list of names that need to be deleted from the policies.
-func (c *DNSCache) cleanupExpiredEntries(expires time.Time) ([]string, time.Time) {
+func (c *DNSCache) cleanupExpiredEntries(expires time.Time) (removed map[string][]string, startTime time.Time) {
 	timediff := int(expires.Sub(c.lastCleanup).Seconds())
-	startTime := c.lastCleanup
+	startTime = c.lastCleanup
 	expiredEntries := []string{}
 	for i := 0; i < int(timediff); i++ {
 		expiredTime := c.lastCleanup.Add(time.Second)
@@ -252,31 +252,32 @@ func (c *DNSCache) cleanupExpiredEntries(expires time.Time) ([]string, time.Time
 		delete(c.cleanup, key)
 	}
 
-	result := []string{}
 	for _, name := range KeepUniqueNames(expiredEntries) {
 		if entries, exists := c.forward[name]; exists {
-			if !c.removeExpired(entries, c.lastCleanup, time.Time{}) {
-				continue
+			// ****
+			for ip, names := range c.removeExpired(entries, c.lastCleanup, time.Time{}) {
+				if removed == nil {
+					removed = make(map[string][]string)
+				}
+				removed[ip] = append(removed[ip], names...)
 			}
-			result = append(result, name)
 		}
 	}
-	return result, startTime
+	return removed, startTime
 }
 
 // cleanupOverLimitEntries returns the names that has reached the max number of
 // IP per host. Internally the function sort the entries by the expiration
 // time.
-func (c *DNSCache) cleanupOverLimitEntries() []string {
+func (c *DNSCache) cleanupOverLimitEntries() (removed map[string][]string) {
 	type IPEntry struct {
 		ip    string
 		entry *CacheEntry
 	}
-	affectedNames := []string{}
 
 	// For global cache the limit maybe is not used at all.
 	if c.perHostLimit == 0 {
-		return affectedNames
+		return nil
 	}
 
 	for dnsName := range c.overLimit {
@@ -301,21 +302,33 @@ func (c *DNSCache) cleanupOverLimitEntries() []string {
 			key := sortedEntries[i]
 			delete(entries, key.ip)
 			c.removeReverse(key.ip, key.entry)
+			// ****
+			if removed == nil {
+				removed = make(map[string][]string)
+			}
+			removed[key.ip] = append(removed[key.ip], key.entry.Name)
 		}
-		affectedNames = append(affectedNames, dnsName)
 	}
+
 	c.overLimit = map[string]bool{}
-	return affectedNames
+	return removed
 }
 
 // GC garbage collector function that clean expired entries and return the
 // entries that are deleted.
-func (c *DNSCache) GC() []string {
+func (c *DNSCache) GC() (removed map[string][]string) {
 	c.Lock()
-	expiredEntries, _ := c.cleanupExpiredEntries(time.Now())
-	overLimitEntries := c.cleanupOverLimitEntries()
+	removed, _ = c.cleanupExpiredEntries(time.Now())
+	for ip, names := range c.cleanupOverLimitEntries() {
+		if removed == nil {
+			removed = make(map[string][]string)
+		}
+		removed[ip] = append(removed[ip], names...)
+	}
+
 	c.Unlock()
-	return KeepUniqueNames(append(expiredEntries, overLimitEntries...))
+
+	return removed
 }
 
 // UpdateFromCache is a utility function that allows updating a DNSCache
@@ -454,12 +467,15 @@ func (c *DNSCache) updateWithEntryIPs(entries ipEntries, entry *CacheEntry) bool
 // clearing functions like ForceExpire, and does not maintain the cache's
 // guarantees.
 // This needs a write lock
-func (c *DNSCache) removeExpired(entries ipEntries, now time.Time, expireLookupsBefore time.Time) (removed bool) {
+func (c *DNSCache) removeExpired(entries ipEntries, now time.Time, expireLookupsBefore time.Time) (removed map[string][]string) {
 	for ip, entry := range entries {
 		if entry == nil || entry.isExpiredBy(now) || entry.LookupTime.Before(expireLookupsBefore) {
 			delete(entries, ip)
 			c.removeReverse(ip, entry)
-			removed = true
+			if removed == nil {
+				removed = make(map[string][]string)
+			}
+			removed[ip] = append(removed[ip], entry.Name)
 		}
 	}
 
@@ -516,7 +532,7 @@ func (c *DNSCache) ForceExpire(expireLookupsBefore time.Time, nameMatch *regexp.
 		// because LookupTime must be before ExpirationTime.
 		// The second expireLookupsBefore actually matches lookup times, and will
 		// delete the entries completely.
-		nameNeedsRegen := c.removeExpired(entries, expireLookupsBefore, expireLookupsBefore)
+		nameNeedsRegen := len(c.removeExpired(entries, expireLookupsBefore, expireLookupsBefore)) > 0
 		if nameNeedsRegen {
 			namesAffected = append(namesAffected, name)
 		}
@@ -540,7 +556,7 @@ func (c *DNSCache) ForceExpireByNames(expireLookupsBefore time.Time, names []str
 		// because LookupTime must be before ExpirationTime.
 		// The second expireLookupsBefore actually matches lookup times, and will
 		// delete the entries completely.
-		nameNeedsRegen := c.removeExpired(entries, expireLookupsBefore, expireLookupsBefore)
+		nameNeedsRegen := len(c.removeExpired(entries, expireLookupsBefore, expireLookupsBefore)) > 0
 		if nameNeedsRegen {
 			namesAffected = append(namesAffected, name)
 		}

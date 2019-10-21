@@ -18,8 +18,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/cilium/cilium/pkg/logging/logfields"
-	"github.com/sirupsen/logrus"
+	"github.com/cilium/cilium/pkg/lock"
 )
 
 const logSubsys = "fqdn"
@@ -38,38 +37,12 @@ func (e *Endpoint) MarkDNSCTEntry(dstIP net.IP, TTL time.Duration) {
 		return
 	}
 
-	var (
-		scopedLog  = e.Logger(logSubsys)
-		lookupTime = time.Now()
-		names      []string
-	)
-	// The DNS TTL may have expired, so use the DNS CT cache to roll forward a qname->IP mapping
-	// TODO: This misses cases where a FQDN IP is allowed due to another
-	// endpoint's lookup. Normally, that case is handled by pooling caches into
-	// the daemon-global DNS cache.
-	names = append(names, e.DNSCTHistory.LookupIP(dstIP)...)
-	names = append(names, e.DNSHistory.LookupIP(dstIP)...)
-
-	if len(names) == 0 {
-		scopedLog.WithFields(logrus.Fields{
-			logfields.IPAddr: dstIP,
-		}).Warn("Could not update endpoint DNS CT cache with IP. No DNS match found in cache.")
-		return
-	}
-
-	for _, qname := range names {
-		e.Logger(logSubsys).WithFields(logrus.Fields{
-			logfields.DNSName: qname,
-			logfields.IPAddr:  dstIP,
-		}).Debug("Updating ep DNS CT cache with qname->IP")
-		e.DNSCTHistory.Update(lookupTime, qname, []net.IP{dstIP}, int(TTL.Seconds()))
-	}
-
+	e.DNSDeletes.MarkActive(dstIP, time.Now())
 	e.SyncEndpointHeaderFile()
 }
 
 type DNSDelete struct {
-	Qname           string
+	Names           []string
 	IP              net.IP
 	ActiveAt        time.Time
 	DeletePendingAt time.Time
@@ -77,69 +50,78 @@ type DNSDelete struct {
 
 type DNSDeletes struct {
 	lock.Mutex
-	deletes        map[string][]*DNSDelete // map[ip]toDelete
+	deletes        map[string]*DNSDelete // map[ip]toDelete
 	lastCTGCUpdate time.Time
+}
+
+func NewDNSDeletes() *DNSDeletes {
+	return &DNSDeletes{
+		deletes: make(map[string]*DNSDelete),
+	}
 }
 
 // WantToDelete enqueues the ip -> qname as a possible deletion
 // updatedExisting is true when an earlier enqueue existed and was updated
-func (d *DNSDeletes) WantToDelete(ip net.IP, qname string) (updatedExisting bool) {
+func (d *DNSDeletes) WantToDelete(ipStr string, qname ...string) (updatedExisting bool) {
 	d.Lock()
 	defer d.Unlock()
 
-	ipStr := ip.String()
 	entry, updatedExisting := d.deletes[ipStr]
 	if !updatedExisting {
-		entry := &DNSDelete{}
-		d.deletes[ipStr] = append(d.deletes[ipStr], entry)
+		entry = &DNSDelete{}
+		d.deletes[ipStr] = entry
 	}
 
-	entry.Qname = qname
-	entry.IP = ip
-	DeletePendingAt = time.Now()
+	entry.Names = append(entry.Names, qname...)
+	entry.IP = net.ParseIP(ipStr)
+	entry.DeletePendingAt = time.Now()
 
 	return updatedExisting
 }
 
 // Delete after it is seen by CT GC, DeletePendingAt < lastCTGCUpdate, and the ActiveTime is 0 or no longer current, ActiveAt < lastCTGCUpdate
 func (d *DNSDeletes) canDelete(del *DNSDelete) bool {
-	return d.lastGCUpdate.After(del.DeletePendingAt) && d.lastGCUpdate.After(del.ActiveAt)
+	return d.lastCTGCUpdate.After(del.DeletePendingAt) && d.lastCTGCUpdate.After(del.ActiveAt)
 }
 
-func (d *DNSDeletes) ClearDeletable() (deletable []*DNSDelete) {
+func (d *DNSDeletes) ClearDeletable() (active, deletable []*DNSDelete) {
 	d.Lock()
 	defer d.Unlock()
 
 	// Collect entries we can delete
 perIP:
-	for ipStr, dels := range d.deletes {
-		for _, del := range dels {
-			if !d.CanDelete(del) {
-				continue perIP
-			}
+	for _, del := range d.deletes {
+		cpy := &DNSDelete{
+			IP:              del.IP,
+			DeletePendingAt: del.DeletePendingAt,
+			ActiveAt:        del.ActiveAt,
 		}
-		deletable = append(deletable, dels...)
+		cpy.Names = append(cpy.Names, del.Names...)
+
+		if !d.canDelete(cpy) {
+			active = append(active, cpy)
+			continue perIP
+		}
+		deletable = append(deletable, cpy)
 	}
 
 	// Delete the entries we collected above
 	for _, del := range deletable {
-		delete(d.deletes[del.IP.String()])
+		delete(d.deletes, del.IP.String())
 	}
 
-	return deletable
+	return active, deletable
 }
 
 func (d *DNSDeletes) MarkActive(ip net.IP, now time.Time) {
 	d.Lock()
 	defer d.Unlock()
 
-	entries, exists := d.deletes[ip.String()]
+	entry, exists := d.deletes[ip.String()]
 	if !exists {
 		return
 	}
-	for _, entry := range entries {
-		entry.ActiveAt = now
-	}
+	entry.ActiveAt = now
 }
 
 func (d *DNSDeletes) MarkGCTime(now time.Time) {

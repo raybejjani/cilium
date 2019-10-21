@@ -153,27 +153,30 @@ func (d *Daemon) bootstrapFQDN(restoredEndpoints *endpointRestoreState, preCache
 
 	// Controller to cleanup TTL expired entries from the DNS policies.
 	dnsGCJobName := "dns-garbage-collector-job"
+	dnsGCJobInterval := 1 * time.Minute
 	controller.NewManager().UpdateController(dnsGCJobName, controller.ControllerParams{
-		RunInterval: 1 * time.Minute,
+		RunInterval: dnsGCJobInterval,
 		DoFunc: func(ctx context.Context) error {
 
-			namesToClean := []string{}
+			var namesToClean []string
+
 			// cleanup poller cache
-			namesToClean = append(namesToClean, d.dnsPoller.DNSHistory.GC()...)
+			// TODO: do we want a poller DNSDeletes?
+			for _, names := range d.dnsPoller.DNSHistory.GC() {
+				namesToClean = append(namesToClean, names...)
+			}
 
 			// cleanup caches for all existing endpoints as well.
 			endpoints := d.endpointManager.GetEndpoints()
 			for _, ep := range endpoints {
-				namesToClean = append(namesToClean, ep.DNSHistory.GC()...)
-			}
-
-			namesToClean = fqdn.KeepUniqueNames(namesToClean)
-			if len(namesToClean) == 0 {
-				return nil
+				for ip, names := range ep.DNSHistory.GC() {
+					ep.DNSDeletes.WantToDelete(ip, names...)
+					namesToClean = append(namesToClean, names...)
+				}
 			}
 
 			//Before doing the loop the DNS names to clean will be removed from
-			//cfg.Cache, to make sure that data is persistent across cache.
+			//cfg.Cache, to make sure that data is consistent across caches.
 			cfg.Cache.ForceExpireByNames(time.Now(), namesToClean)
 
 			// A second loop is needed to update the global cache from the
@@ -182,9 +185,23 @@ func (d *Daemon) bootstrapFQDN(restoredEndpoints *endpointRestoreState, preCache
 			// DNS data will be reinserted from the endpoint.DNSHistory cache
 			// that made the request.
 			for _, ep := range endpoints {
-				cfg.Cache.UpdateFromCache(ep.DNSHistory, namesToClean)
+				var namesToUpdate []string
+				active, deletable := ep.DNSDeletes.ClearDeletable()
+				for _, a := range active {
+					log.Debugf("FML Active %+v", a)
+					// TODO: figure out TTL here
+					for _, name := range a.Names {
+						cfg.Cache.Update(time.Now(), name, []net.IP{a.IP}, int(2*dnsGCJobInterval.Seconds()))
+					}
+				}
+				for _, d := range deletable {
+					log.Debugf("FML Deletable %+v", d)
+					namesToUpdate = append(namesToUpdate, d.Names...)
+				}
+				cfg.Cache.UpdateFromCache(ep.DNSHistory, namesToUpdate)
 			}
 			// Also update from the poller.
+			// TODO: deletable things?
 			cfg.Cache.UpdateFromCache(d.dnsPoller.DNSHistory, namesToClean)
 
 			metrics.FQDNGarbageCollectorCleanedTotal.Add(float64(len(namesToClean)))
@@ -693,7 +710,6 @@ func extractDNSLookups(endpoints []*endpoint.Endpoint, CIDRStr, matchPatternStr 
 				TTL:            int64(lookup.TTL),
 				ExpirationTime: strfmt.DateTime(lookup.ExpirationTime),
 				EndpointID:     int64(ep.ID),
-				Source:         name,
 			})
 		}
 	}

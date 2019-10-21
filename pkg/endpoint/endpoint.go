@@ -190,7 +190,7 @@ type Endpoint struct {
 	// this endpoint.
 	DNSHistory *fqdn.DNSCache
 
-	DNSDeletes DNSDeletes
+	DNSDeletes *DNSDeletes
 
 	// dnsHistoryTrigger is the trigger to write down the lxc_config.h to make
 	// sure that restores when DNS policy is in there are correct
@@ -388,7 +388,7 @@ func NewEndpointWithState(owner regeneration.Owner, proxy EndpointProxy, allocat
 		OpLabels:        pkgLabels.NewOpLabels(),
 		status:          NewEndpointStatus(),
 		DNSHistory:      fqdn.NewDNSCacheWithLimit(option.Config.ToFQDNsMinTTL, option.Config.ToFQDNsMaxIPsPerHost),
-		DNSDeletes:      &DNSDeletes{},
+		DNSDeletes:      NewDNSDeletes(),
 		state:           state,
 		hasBPFProgram:   make(chan struct{}, 0),
 		controllers:     controller.NewManager(),
